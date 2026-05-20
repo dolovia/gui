@@ -88,7 +88,16 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
         var naissanceArg = arguments[4] || '';
 
         try {
-            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/Consultation.do';
+            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/Consultation.do';
+            var isHttps = window.location.href.toString().substring(0,5) === 'https';
+            function setcookie(name, value) {
+                document.cookie = name + '=' + value + '; path=/' + (isHttps ? '; secure' : '');
+            }
+            if (nniArg) { setcookie('NIR', nniArg); }
+            if (nomArg !== null) { setcookie('NOM', nomArg); }
+            if (prenomArg !== null) { setcookie('PRENOM', prenomArg); }
+            if (naissanceArg !== null) { setcookie('DATE_NAIS', naissanceArg); }
+            if (datesoinsArg !== null) { setcookie('DATE_SOINS', datesoinsArg); }
             var form = new URLSearchParams({
                 nni: nniArg,
                 nom: nomArg,
@@ -159,7 +168,8 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
                 candidate['Nom usage'],
                 candidate['Prénom'],
                 candidate['Date de naissance'],
-                candidate['NIR']
+                candidate['NIR'],
+                candidate.get('event_value')
             )
             
             try:
@@ -203,7 +213,7 @@ def parse_all_candidate_rows(html):
     
     # find the header row that contains "Nom du bénéficiaire"
     header_row = None
-    for tr in soup.find_all('tr', class_='titreTableau'):
+    for tr in soup.find_all('tr'):
         if 'Nom du bénéficiaire' in tr.get_text(" ", strip=True):
             header_row = tr
             break
@@ -223,12 +233,25 @@ def parse_all_candidate_rows(html):
         if len(tds) < 5:
             continue
 
+        event_value = None
+        link = row.find('a', href=True)
+        if link and 'selectLineByKey' in link.get('href', ''):
+            href = link.get('href', '')
+            parts = href.split(',')
+            if len(parts) >= 2 and "'" in parts[1]:
+                event_value = parts[1].split("'")[1]
+        if not event_value and link and link.get('id'):
+            link_id = link.get('id', '')
+            if '###' in link_id:
+                event_value = link_id.split('###')[-1]
+
         candidate = {
             'Nom du bénéficiaire': tds[0].get_text(strip=True),
             'Nom usage': tds[1].get_text(strip=True),
             'Prénom': tds[2].get_text(strip=True),
             'Date de naissance': tds[3].get_text(strip=True),
             'NIR': tds[4].get_text(strip=True),
+            'event_value': event_value
         }
         candidates.append(candidate)
     

@@ -204,7 +204,7 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
 
 
 
-def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birth_date, nir, timeout=30):
+def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birth_date, nir, event_value_override=None, timeout=30):
     """
     Fetch alternative data using the tableauActionLoupePQ endpoint.
     This is called when multiple candidates are found.
@@ -233,7 +233,7 @@ def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birt
         nir_cleaned = nir_cleaned[:13]
     
     # Compose the eventValue string as in the curl example
-    event_value = f"{beneficiary_name}{usual_name}{first_name}{birth_date}{nir_cleaned}"
+    event_value = event_value_override or f"{beneficiary_name}{usual_name}{first_name}{birth_date}{nir_cleaned}"
     
     # Properly URL-encode the payload
     payload = urlencode({
@@ -248,7 +248,7 @@ def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birt
     var callback = arguments[arguments.length - 1];
     var payload = arguments[0];
     
-    var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/tableauActionLoupePQ.do';
+    var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/tableauActionLoupePQ.do';
     
     console.log('Alternative fetch starting with payload:', payload);
     
