@@ -7,14 +7,15 @@ from typing import Optional
 
 def _has_results_markers(soup: BeautifulSoup) -> bool:
     markers = [
-        "Information de l'ouvrant droit",
-        "Information du bénéficiaire",
-        "Information du b\xe9n\xe9ficiaire",
-        "Ouverture des droits",
-        "Droits et Couvertures",
+        "information de l'ouvrant droit",
+        "information du bénéficiaire",
+        "information du bénéficiaire des soins",
+        "information du b\xe9n\xe9ficiaire",
+        "ouverture des droits",
+        "droits et couvertures",
     ]
     for marker in markers:
-        if soup.find(string=lambda t: t and marker in t):
+        if soup.find(string=lambda t: t and marker in t.lower()):
             return True
     return False
 
@@ -30,6 +31,8 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
     Returns:
         A dictionary with the extracted and structured data.
     """
+    if not html_content:
+        return None
     soup = BeautifulSoup(html_content, 'html.parser')
     if not _has_results_markers(soup):
         return None
@@ -76,35 +79,35 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
     ouvrant_droit = {}
     od_header = soup.find(
         lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
-        and "Information de l'ouvrant droit" in tag.get_text()
+        and "information de l'ouvrant droit" in tag.get_text().lower()
     )
     if od_header:
         current_tr = od_header.find_parent('tr')
-        nom_tr = current_tr.find_next_sibling('tr')
-        usage_tr = nom_tr.find_next_sibling('tr')
-        prenom_tr = usage_tr.find_next_sibling('tr')
+        nom_tr = current_tr.find_next_sibling('tr') if current_tr else None
+        usage_tr = nom_tr.find_next_sibling('tr') if nom_tr else None
+        prenom_tr = usage_tr.find_next_sibling('tr') if usage_tr else None
         
-        ouvrant_droit['nom_famille'] = get_value_from_label(nom_tr.find('td'))
-        ouvrant_droit['nom_usage'] = get_value_from_label(usage_tr.find('td'))
-        ouvrant_droit['prenom'] = get_value_from_label(prenom_tr.find('td'))
+        ouvrant_droit['nom_famille'] = get_value_from_label(nom_tr.find('td')) if nom_tr else None
+        ouvrant_droit['nom_usage'] = get_value_from_label(usage_tr.find('td')) if usage_tr else None
+        ouvrant_droit['prenom'] = get_value_from_label(prenom_tr.find('td')) if prenom_tr else None
     data['ouvrant_droit'] = ouvrant_droit
 
     # 3. Bénéficiaire (Beneficiary)
     beneficiaire = {}
     ben_header = soup.find(
         lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
-        and "Information du b\xe9n\xe9ficiaire des soins" in tag.get_text()
+        and "information du bénéficiaire des soins" in tag.get_text().lower()
     )
     if ben_header:
         current_tr = ben_header.find_parent('tr')
-        nom_tr = current_tr.find_next_sibling('tr')
-        prenom_tr = nom_tr.find_next_sibling('tr')
-        dob_tr = prenom_tr.find_next_sibling('tr')
+        nom_tr = current_tr.find_next_sibling('tr') if current_tr else None
+        prenom_tr = nom_tr.find_next_sibling('tr') if nom_tr else None
+        dob_tr = prenom_tr.find_next_sibling('tr') if prenom_tr else None
 
-        beneficiaire['nom_famille'] = get_value_from_label(nom_tr.find('td'))
-        beneficiaire['prenom'] = get_value_from_label(prenom_tr.find('td'))
+        beneficiaire['nom_famille'] = get_value_from_label(nom_tr.find('td')) if nom_tr else None
+        beneficiaire['prenom'] = get_value_from_label(prenom_tr.find('td')) if prenom_tr else None
         
-        dob_text = get_value_from_label(dob_tr.find('td'))
+        dob_text = get_value_from_label(dob_tr.find('td')) if dob_tr else None
         # Handle non-breaking spaces before splitting
         dob_parts = dob_text.replace('\xa0', ' ').split() if dob_text else []
         beneficiaire['date_naissance'] = dob_parts[0] if dob_parts else None
@@ -113,7 +116,7 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
 
     # 4. Organisme de Gestion (Managing Organization)
     organisme_gestion = {}
-    code_label = soup.find(string=lambda t: t and "Code grand r\xe9gime" in t)
+    code_label = soup.find(string=lambda t: t and "code grand régime" in t.lower())
     if code_label:
         gestion_table = code_label.parent.find_parent('table')
         if gestion_table:
@@ -155,7 +158,7 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
             value_text = cells[2].get_text(strip=True)
             is_active = 'bt_vert.gif' in status_src if status_src else None
 
-            if "Ouverture des droits" in label_text:
+            if "ouverture des droits" in label_text.lower():
                 if is_active is None:
                     item = {'statut': value_text}
                 else:
@@ -166,13 +169,13 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
                     item['periode_fin'] = parts[3]
                 droits_couvertures['regime_base'] = item
             
-            elif "Exonération du ticket modérateur" in label_text:
+            elif "exonération du ticket modérateur" in label_text.lower():
                 droits_couvertures['exoneration_ticket_moderateur'] = {'statut': value_text}
             
-            elif "Modulation du ticket modérateur" in label_text:
+            elif "modulation du ticket modérateur" in label_text.lower():
                 droits_couvertures['modulation_ticket_moderateur'] = {'statut': value_text}
             
-            elif "Complémentaire santé solidaire" in label_text:
+            elif "complémentaire santé solidaire" in label_text.lower():
                 if is_active is None:
                     item = {'statut': value_text}
                 else:
@@ -183,7 +186,7 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
                     item['periode_fin'] = parts[3]
                 droits_couvertures['complementaire_sante_solidaire'] = item
             
-            elif "Médecin traitant" in label_text:
+            elif "médecin traitant" in label_text.lower():
                 item = {'statut': value_text}
                 if value_text == 'OUI':
                     details_row = row.find_next_sibling('tr')
