@@ -88,7 +88,7 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
         var naissanceArg = arguments[4] || '';
 
         try {
-            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/accueilPQ.do';
+            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/Consultation.do';
             var form = new URLSearchParams({
                 nni: nniArg,
                 nom: nomArg,
@@ -397,7 +397,7 @@ def main():
     start_time = time()
     
     driver = connect_or_start_driver()
-    driver.get("https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/accueilPQ.do")
+    driver.get("https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/accueilPQ.do")
     try:
         WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.ID, "idsoins")))
     except TimeoutException:
