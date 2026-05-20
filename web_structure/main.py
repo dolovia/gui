@@ -88,7 +88,7 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
         var naissanceArg = arguments[4] || '';
 
         try {
-            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/Consultation.do';
+            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/accueilPQ.do';
             var form = new URLSearchParams({
                 nni: nniArg,
                 nom: nomArg,
