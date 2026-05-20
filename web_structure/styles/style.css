@@ -1,0 +1,238 @@
+*
+{
+    font-family: arial;
+    font-size:12px;
+    font-weight: normal; 
+}
+
+
+
+BODY {
+  background-color: #D9E5F0;
+}
+
+TEXTAREA {
+  /* police */
+  font-size: 11px;
+  font-family: Arial;  
+}
+
+IMG {
+  /* Bordures */
+  border:0;
+}
+
+DIV.zoneerreur {
+  /* Bordures */
+  background-color: #FFFFFF;
+  border-style: outset;
+  border-width: 2px;
+  text-align: left;
+  padding-left : 2px;
+  overflow: auto;
+}
+
+SPAN.erreur {
+  /* police*/
+  font-size: 11px;
+  font-family: Arial;
+  font-style: italic;
+  color: #FF0000;
+}
+
+SPAN.message {
+  /* police*/
+  font-size: 11px;
+  font-family: Arial;
+  font-style: normal;
+  color: #000000;
+}
+
+.libelle {
+  /* police*/
+  font-size: 11px;
+  font-family: Arial;
+  color: #333333;  
+  font-weight: normal; 
+}
+
+INPUT[TYPE="text"]{
+  /* police*/  
+  font-size: 11px;
+  font-family: Arial;
+  font-weight: normal; 
+  color: #000000;
+  border-style: inset;
+  border-width:1px;
+}
+
+.titre {
+  /* police*/  
+  font-size: 13px;
+  font-family: Arial;
+  color: #000000;
+  text-align: center;
+  font-weight: bold; 
+}
+
+.inputCodeCle {
+  /* police*/
+  font-family:Courier, Courier New;
+  font-size:10px;  
+  font-weight: normal; 
+  color: #000000;
+}
+
+.rouge {
+  color: #FF0000;
+}
+
+.titrebleu {
+  /* police*/  
+  font-size: 20px;
+  font-family: Arial;
+  color: #2A77B5;
+  text-align: center;
+  font-weight: bold; 
+}
+
+.messageerreur {
+  /* police*/  
+  font-size: 20px;
+  font-family: Arial;
+  color: #FF0000;
+  text-align: center;
+  font-weight: bold; 
+}
+
+.etoilerouge {
+  font-size: 20px;
+  color: #FF0000;
+	font-weight: bold;
+
+}
+
+.oucentre {
+  /* police*/  
+  font-size: 17px;
+  font-family: Arial;
+  color: black;
+  text-align: center;
+  font-weight: bold; 
+}
+
+.PQBas 
+	{/* proprietes du texte */
+	 font-family: Arial;
+	 font-size: 17px;
+	 font-weight: bold;
+	 color: #FFFFFF;
+
+	 /* proprietes de cellule */
+	 background-color:#0956AE;
+	}
+
+.PQBas A:link
+	{font-size: 17px;
+	 font-weight: bold;
+	 color: #FFFFFF;
+	 text-decoration: none;
+	}
+
+.PQBas A:visited
+	{font-size: 17px;
+	 font-weight: bold;
+	 color: #FFFFFF;
+	 text-decoration: none;
+	}
+
+.PQBas A:hover
+	{font-size: 17px;
+	 font-weight: bold;
+	 color: #FFFFFF;
+	 text-decoration: none;
+	}
+
+.PQBas A:active
+	{font-size: 17px;
+	 font-weight: bold;
+	 color: #FFFFFF;
+	 text-decoration: none;
+	}
+
+
+.info {
+  /* police*/  
+  font-size: 15px;
+  font-family: Arial;
+  color: black;
+  text-align: center;
+  font-weight: bold;;
+  text-decoration: underline 
+}
+
+.lib {
+  /* police*/  
+  font-size: 12px;
+  font-family: Arial;
+  color: black;
+  text-align: center;
+  font-weight: bold; 
+}
+
+.lib2 {
+  /* police*/  
+  font-size: 12px;
+  font-family: Arial;
+  color: black;
+  text-align: center;
+
+}
+
+.titrebleutab {
+  /* police*/  
+  font-size: 15px;
+  font-family: Arial;
+  color: #2A77B5;
+  text-align: center;
+  font-weight: bold; 
+}
+
+.PQLiens
+	{/* proprietes du texte */
+	 font-family: Arial;
+	 font-size: 15px;
+	 font-weight: bold;
+	 color: #0956AE;
+	text-decoration: underline
+	 /* proprietes de cellule */
+	background-color: #D9E5F0;
+	}
+
+.PQLiens A:link
+	{font-size: 15px;
+	 font-weight: bold;
+	 color: #0956AE;
+	 text-decoration: underline;
+	}
+
+.PQLiens A:visited
+	{font-size: 15px;
+	 font-weight: bold;
+	 color: #0956AE;
+	 text-decoration: underline;
+	}
+
+.PQLiens A:hover
+	{font-size: 15px;
+	 font-weight: bold;
+	 color: #0956AE;
+	 text-decoration: underline;
+	}
+
+.PQLiens A:active
+	{font-size: 15px;
+	 font-weight: bold;
+	 color: #0956AE;
+	 text-decoration: underline;
+	}

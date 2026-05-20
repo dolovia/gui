@@ -1,0 +1,425 @@
+
+
+
+
+
+
+
+<html>
+
+<head>
+<title>
+Consultation des Droits</title>
+<link rel="stylesheet" type="text/css" href="styles/calque.css">
+<link rel="stylesheet" type="text/css" href="styles/corpsDePage.css">
+<link rel="stylesheet" type="text/css" href="styles/entete.css">
+<link rel="stylesheet" type="text/css" href="styles/menus.css">
+<link rel="stylesheet" type="text/css" href="styles/style.css">
+
+
+<SCRIPT src="scripts/navig.js"></SCRIPT>
+<SCRIPT src="scripts/mere.js"></SCRIPT>
+<SCRIPT src="scripts/defaultevent.js"></SCRIPT>
+<SCRIPT src="scripts/rechercher.js"></SCRIPT>
+<SCRIPT src="scripts/effacer.js"></SCRIPT>
+<SCRIPT src="scripts/chargePage.js"></SCRIPT>
+
+
+
+<SCRIPT language="javascript">
+
+function lancePopup() {
+     window.open("html/popup.html",'','channelmode=no,directories=no,location=no,menubar=no,resizable=no,scrollbars=no,status=yes,toolbar=no,height=80,width=325,top=270,left=230'); 
+}
+
+</SCRIPT>
+
+
+</head>
+
+<body topMargin="0" leftMargin="0">
+<table width="100%" height="100%" border="0"  cellpadding="0" cellspacing="0">
+  <tr>
+    <td height="58">
+		
+
+<!-- ******************** -->
+<!-- DEBUT DU TAG ENTETE  -->
+<!-- ******************** -->
+<TABLE border="0" cellpadding="0" cellspacing="0" width="100%">
+<TR>
+<TD width="*" height="52"><TABLE border="0" cellpadding="0" cellspacing="0" width="100%">
+<TR>
+<TD background="images/webAppli_entete_dec1.gif" width="*" height="5"></TD><TD rowspan="3" width="28"><IMG border="0" src="images/webAppli_entete_dec2.gif" width="20" alt="" height="52" /></TD></TR>
+<TR>
+<TD width="*" class="nomApplicatif" height="42"><A href="javascript:document.location.href='jsp/accueil/startPQ.jsp'">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Consultation des droits</A></TD></TR>
+<TR>
+<TD background="images/webAppli_entete_dec4.gif" height="5"></TD></TR>
+</TABLE>
+</TD><TD width="375"><TABLE border="0" cellpadding="0" cellspacing="0" width="100%" height="100%">
+<TR>
+<TD width="*" height="21"><TABLE border="0" cellpadding="0" cellspacing="0" width="*" align="right" height="21">
+<TR>
+<TD width="nowrap" class="LiensEntete"></TD><TD width="nowrap" class="LiensEntete"></TD><TD width="nowrap" class="LiensEntete"></TD><TD width="nowrap" class="LiensEntete"></TD><TD width="7"></TD></TR>
+<TR>
+<TD colspan="8" height="10"></TD></TR>
+</TABLE>
+</TD></TR>
+<TR>
+<TD width="*" height="25"><TABLE border="0" cellpadding="0" cellspacing="0" width="100%" height="25">
+<TR>
+<TD class="numeroVersion">V 05.01.00</TD><TD width="*" class="LiensEntete">&nbsp;</TD><TD width="10"><IMG border="0" src="images/webAppli_entete_separateur.gif" width="10" alt="" height="25" /></TD><TD width="25"><A href="javascript:deconnecter()"><IMG border="0" src="images/webAppli_entete_btDeconnect.gif" width="25" alt="Déconnexion&nbsp;" title="Déconnexion&nbsp;" height="25" /></A></TD><TD width="7" class="LiensEntete"></TD></TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+</TD></TR>
+<TR>
+<TD colspan="2" height="12"><TABLE border="0" cellpadding="0" cellspacing="0" width="100%" height="100%">
+<TR>
+<TD width="15" height="100%"></TD><TD width="*" class="arborescence" height="12"></TD></TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<!-- ****************** -->
+<!-- FIN DU TAG ENTETE  -->
+<!-- ****************** -->
+
+
+    </td>
+  </tr>
+  <tr>
+    <!-- par defaut (height = 35) -->
+    <td height="10">
+	<hr size="1%" color="#2A77B5"/>	
+	</td>
+  </tr>
+
+  <tr>
+    <td height="1%">&nbsp;<Br/></td>
+  </tr>
+  <tr>
+    <td height="98%" valign="top">
+		
+
+
+
+
+
+
+
+
+<SCRIPT src="scripts/tableaubleu.js"></SCRIPT>
+<SCRIPT src="scripts/tableaudefaultevent.js"></SCRIPT>
+<SCRIPT src="scripts/tableaudefault.js"></SCRIPT>
+<LINK href="styles/tableaubleu.css" type="text/css" rel="stylesheet" />
+<LINK href="styles/tableaudefault.css" type="text/css" rel="stylesheet" />
+
+<body onload="javascript:chargementValeurs();">
+<!-- Cette table se trouve dans un TR du squelette -->
+<!-- Pour modifier la hauteur de la zone de travail qui se trouve dans cette table -->
+<!-- il faut modifier les TR du squelette -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%" height="100%">
+
+  	
+	
+	
+  <tr>
+    <td>&nbsp;<Br/></td>
+    <td>&nbsp;<Br/></td>	
+  </tr>
+  <tr>
+
+	<!-- Ce TD permet de decaler la zone de travail(le cadre)-->
+	<!-- Par defaut width="50px" : on le passe a width="25px" -->
+	<td width="25px" height="98%">&nbsp;<Br/></td>
+
+	<td width="*" height="98%">
+		
+		
+
+		<!-- Largeur de la zone travail par defaut (width="600px")-->
+		<!-- On la passe a width = 700px -->
+		<TABLE cellpadding="0" width="700px" cellspacing="0" height="700px">
+<TR>
+<TD cellpadding="0" cellspacing="0" width="100%" class="zonetravailsansonglets" height="*">
+		
+		<TABLE width="100%" height="100%" border="0">
+			<!-- TR qui va contenir le formulaire et les boutons -->
+			<!-- DEBUT DU FORMULAIRE -->
+			<form name="ConsultationForm" method="post" action="Consultation.do">
+			<tr>
+				<td width="100%" height="40%" align="center" valign="top">
+				<table width="100%" height="40%" align="center" border="0" cellpadding="2">
+				
+							<tr>
+								<td align="center">
+									&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+									<font class="libelle" >Identifiant (NIR) :</font>
+									<font class="etoilerouge" > * </font>
+									<input type="text" id="idnni" name="nni" maxlength="13" size="13" tabindex="1" value="">
+								</td>	
+								<td align="center">
+									
+								</td>					
+							</tr>
+							<tr>
+								<TD align="left"  valign="top" colspan="2" height="10">
+								&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+								&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+								&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+								<font class ="oucentre"> OU </font>
+								</TD>
+								<td align="center">
+									
+								</td>	
+							</tr>
+							<tr>
+								
+								<td align="right" valign="top">
+									<font class="libelle" >&nbsp;&nbsp;&nbsp;&nbsp; Nom : </font> <font class="etoilerouge"> * </font> 
+									<input type="text" id="idnom" name="nom" maxlength="80" size="25" tabindex="2" value="">
+								</td>
+								<td align="center">
+								
+									<font class="libelle" > Date des soins (JJMMAAAA) : </font> 
+									<input type="text" id="idsoins" name="datesoins" maxlength="8" size="8" tabindex="6" value=20052026>	
+								</td>
+								
+							</tr>
+					
+							<tr>
+								<td align="right">
+									<font class="libelle" > Pr&eacute;nom : </font> <FONT class="etoilerouge"> * </FONT> 
+									<input type="text" id="idpre" name="prenom" maxlength="54" size="25" tabindex="3" value="">
+								</td>
+								<td align="center">
+									
+								</td>
+							</tr>
+							
+							<tr>
+								<td align="left">
+									<font class="libelle" >Date de naissance (JJMMAAAA) :</font>&nbsp;&nbsp;&nbsp;
+									<input type="text" id="idnaiss" name="naissance" maxlength="8" size="8" tabindex="4" value="">
+								</td>
+								
+							</tr>
+
+							<tr>
+								
+								<td width="50%" height="*" align="left" valign="top">
+									
+								<FONT class="etoilerouge"> * </FONT> <FONT class="libelle">
+								Champ obligatoire </FONT></td>
+								
+								<td width="50%" height="*" align="right" valign="top">
+									  <TABLE width="*" cellpadding="0" height="20" cellspacing="0" border="0">
+										<TR>
+											<TD width="75" height="20">
+				<DIV align="left" style="position:relative;margin:0;padding:0;width:75px;height:20px">
+					<TABLE width="100%" cellpadding="0" cellspacing="0" border="0">
+						<TR width="100%">
+							<TD>
+		<IMG width="5" height="20" border="0" src="images/bt_blanc_bordGauche.gif" alt="" />
+							</TD>
+							<TD width="100%">
+		<IMG width="100%" height="20" border="0" src="images/bt_blanc_fondCentre.gif" alt="" />
+							</TD>
+							<TD>
+		<IMG width="5" height="20" border="0" src="images/bt_blanc_bordDroit.gif" alt="" />
+							</TD>
+						</TR>
+					</TABLE>
+	<DIV class="bt_blancDiv1" style="position:absolute;left:0;margin:0;padding:0;border:0;text-align:center;top:0;height:20px;width:75px">
+		<TABLE width="100%" cellpadding="0" height="100%" align="center" cellspacing="0" border="0">
+			<TR>
+<TD width="*">Effacer</TD></TR>
+</TABLE>
+	</DIV>
+	<DIV class="bt_blancDiv2" style="position:absolute;left:0;margin:0;padding:0;border:0;text-align:center;top:0;height:20px;width:75px">
+		<A href="javascript:effacer('boutonPQ1')" title="Effacer le Formulaire" id="boutonPQ1">
+			<IMG width="100%" height="20" border="0" src="images/spacer.gif" alt="Effacer" /></A>
+	</DIV>
+  </DIV>
+</TD>
+<TD width="10"></TD>
+<TD width="75" height="20">
+  <DIV align="left" style="position:relative;margin:0;padding:0;width:75px;height:20px">
+<TABLE width="100%" cellpadding="0" cellspacing="0" border="0">
+<TR width="100%">
+<TD><IMG width="5" height="20" border="0" src="images/bt_blanc_bordGauche.gif" alt="" /></TD>
+<TD width="100%"><IMG width="100%" height="20" border="0" src="images/bt_blanc_fondCentre.gif" alt="" /></TD>
+<TD><IMG width="5" height="20" border="0" src="images/bt_blanc_bordDroit.gif" alt="" /></TD>
+</TR>
+</TABLE>
+<DIV class="bt_blancDiv1" style="position:absolute;left:0;margin:0;padding:0;border:0;text-align:center;top:0;height:20px;width:75px">
+<TABLE width="100%" cellpadding="0" height="100%" align="center" cellspacing="0" border="0">
+<TR>
+<TD width="22"><IMG width="22" height="20" border="0" src="images/bt_blanc_picto_rec.gif" alt="" /></TD>
+<TD width="*"><U class="btSouligne">R</U>echercher</TD></TR>
+</TABLE>
+</DIV>
+  <DIV class="bt_blancDiv2" style="position:absolute;left:0;margin:0;padding:0;border:0;text-align:center;top:0;height:20px;width:75px">
+	<A href="javascript:rechercher()" title="Rechercher" id="rech">
+	<IMG width="100%" height="20" border="0" src="images/spacer.gif" alt="Rechercher" /></A>
+  </DIV>
+</DIV>
+</TD>
+<TD width="10"></TD></TR>
+</TABLE>
+ 
+	</td>									
+</tr>
+			
+</table>
+				
+	</td>
+</tr>
+</form>
+			
+<!-- Fin de TR Formulaire + Boutons -->
+<tr height="10">
+	<td width="100%"  align="center" valign="top">
+		<table width="100%"  align="center" border="0" cellpadding="0">
+			<tr>
+				<TD height="5" width="197">			
+					<font class="titrebleutab" >Choix du b&eacute;n&eacute;ficiaire </font>
+				</TD>
+				<td colspan="2" width="570">
+				  <IMG width="100%" height="2" border="0" src="images/webAppli_entete_dec4.gif" />
+				</td>
+			</tr>
+		</table>
+		</td>
+		</tr>
+			<!-- TR qui va contenir notre table -->
+			
+			<tr>
+				<TD width="100%" height="*" valign="top">
+				
+				   <FORM action="tableauActionLoupePQ.do" method="POST">
+							
+					</FORM>
+
+				</TD>
+			</tr>
+			<!-- Fin de TR Table -->
+		</TABLE>
+		<!-- Fin Formulaire + Bouton + Tableau -->
+	
+	</TD></TR>
+<TR>
+<TD width="100%" class="zonetravailbarreboutonsvide" height="1"></TD></TR>
+</TABLE>
+
+
+	</td>
+	
+</tr>
+</table>
+<script>
+var inputNNI = document.getElementById("idnni");
+var inputNom = document.getElementById("idnom");
+var inputPrenom = document.getElementById("idpre");
+var inputSoins = document.getElementById("idsoins");
+var inputNaiss = document.getElementById("idnaiss");
+
+var pressEntry = function(event) {
+	if (event.keyCode === 13) {
+		event.preventDefault();
+		document.getElementById("rech").click();
+	}
+}
+inputNNI.addEventListener("keyup", pressEntry);
+inputNom.addEventListener("keyup", pressEntry);
+inputPrenom.addEventListener("keyup", pressEntry);
+inputSoins.addEventListener("keyup", pressEntry);
+inputNaiss.addEventListener("keyup", pressEntry);
+</script>
+</body>
+	</td>
+  </tr>
+ 
+  
+  <!-- On rajoute une ligne entre le corps du document et la zone d'erreur pour mettre notre lien  -->
+  <tr>
+      	<td height="5"> 
+    		<table height="100%" border="0" cellpadding="0" cellspacing="0">
+	    	  <tr>
+			<td width="25"></td>
+			<td width="395">
+		
+
+
+<SCRIPT src="scripts/navig.js"></SCRIPT>
+<SCRIPT src="scripts/mere.js"></SCRIPT>
+
+
+
+<FONT class="PQLiens"><a href=https://portail.sesam-vitale.fr/cdr/accueil>Retour au portail</a></FONT>
+
+			</td>	
+			<td align="right" width="300">
+		
+	</td>
+	    	  </tr>
+		</table>
+	</td>
+  </tr> 
+  
+  <tr>
+    <td height="40">
+	  <table width="100%" height="100%" border="0" cellpadding="0" cellspacing="0">
+	    <tr>
+	    	 <!-- TD pour decaler la zone d'erreur par defaut (140) -->
+		  <td width="30">&nbsp;</td><!-- Zone perdue pour cause de centrage -->
+		  <td width="350">
+				<DIV style="width:340px;height:36px;" class="zoneerreur"></DIV>
+		  </td>
+		  <td width="*" align="left"><SPAN style="font-size:xx-small">&nbsp;</SPAN>
+				<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+
+
+<html>
+<SCRIPT language="javascript">
+
+function lancePopupInfo() {
+     window.open("html/informationsLegales.html",'','channelmode=no,directories=no,location=no,menubar=no,resizable=yes,scrollbars=yes,status=yes,toolbar=no,height=600,width=850,top=200,left=200'); 
+}
+
+</SCRIPT>
+
+<BODY background="">
+
+<TABLE border="0" background="images/baspage.gif">
+	<TBODY>
+		<TR>
+			<TD width="338" height="10"> &nbsp; &nbsp;
+				
+				<FONT class="PQBas">
+				  
+				    <SPAN style="color: white">&nbsp;</SPAN>
+				</FONT>
+					  <span style="color: white">&nbsp;</span>&nbsp;&nbsp;
+				<FONT class="PQBas"> 
+					<A href="jsp/PQ/Aide.jsp" target="_blank">
+					<SPAN style="color: white">Aide</SPAN></A>
+				</FONT>
+			</TD>
+		</TR>
+	</TBODY>
+</TABLE>
+</BODY>
+</html>
+
+		  <!-- Test du lien-->
+		  
+		  </td>
+		</tr>
+	  </table>
+	</td>
+  </tr>
+</table>
+</body>								
+</html>
