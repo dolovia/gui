@@ -9,16 +9,12 @@ from time import sleep, time
 from utils import parse_rights_data, alterative_fetch_post
 import pandas as pd
 from termcolor import colored
-from config import WORKING_PORT, WORKER_NAME
+from config import WORKING_PORT, WORKER_NAME, BATCH_SIZE, SLEEP_PER_REQUEST, SLEEP_PER_BATCH
 import subprocess
 import os
 import signal
 import platform
 import shutil
-from datetime import date
-
-
-EXPIRY_DATE = date(2026, 5, 21)
 
 
 def parse_html_to_dict(html):
@@ -346,15 +342,7 @@ def start_cleanup_worker(initial_nnis, file_path, flush_every=25):
     return queue, thread
 
 
-def is_expired():
-    return date.today() > EXPIRY_DATE
-
-
 def main():
-    if is_expired():
-        print(colored("Failed to start the worker.", "red"))
-        return
-
     start_time = time()
     
     # Kill existing Chrome processes and start fresh
@@ -452,17 +440,21 @@ def main():
             elif status == 'insurance_issue':
                 insurance_issue_list.append(f"{nom} {prenom}".strip())
 
-            # Save to Excel every 25 records (OPTIMIZATION: increased batch size)
-            if batch_counter >= 25:
+            # Save to Excel every BATCH_SIZE records (configurable)
+            if batch_counter >= BATCH_SIZE:
                 df = pd.DataFrame(results)
                 df.to_excel(save_file_name, index=False, engine='openpyxl')
                 print(colored(f"Batch saved: {len(results)} total records", "green"))
                 batch_counter = 0
+                if SLEEP_PER_BATCH > 0:
+                    sleep(SLEEP_PER_BATCH)
 
             print(colored(f"Processed name: {nom} {prenom} [{processed_count}/{total_lines}]", "cyan"))
         finally:
             if cleanup_queue is not None:
                 cleanup_queue.put(f"{nom} {prenom}".strip())
+        if SLEEP_PER_REQUEST > 0:
+            sleep(SLEEP_PER_REQUEST)
 
     # Write all not-found records at once (OPTIMIZATION: batch write)
     if not_found_list:
