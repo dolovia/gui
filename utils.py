@@ -3,7 +3,24 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 from termcolor import colored
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Callable
+
+_logger: Optional[Callable[[str], None]] = None
+_use_color = True
+
+
+def set_logger(logger: Optional[Callable[[str], None]] = None, use_color: bool = True) -> None:
+    global _logger, _use_color
+    _logger = logger
+    _use_color = use_color
+
+
+def _log(message: str, color: Optional[str] = None) -> None:
+    text = colored(message, color) if _use_color and color else message
+    if _logger:
+        _logger(text)
+    else:
+        print(text)
 
 def _has_results_markers(soup: BeautifulSoup) -> bool:
     markers = [
@@ -229,10 +246,10 @@ def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birt
     nir_cleaned = ''.join(c for c in str(nir) if c.isdigit())
     
     if len(nir_cleaned) == 15:
-        print(colored(f"NIR {nir} has 15 digits, truncating to first 13 digits", "yellow"))
+        _log(f"NIR {nir} has 15 digits, truncating to first 13 digits", "yellow")
         nir_cleaned = nir_cleaned[:13]
     elif len(nir_cleaned) == 14:
-        print(colored(f"NIR {nir} has 14 digits, using first 13", "yellow"))
+        _log(f"NIR {nir} has 14 digits, using first 13", "yellow")
         nir_cleaned = nir_cleaned[:13]
     
     # Compose the eventValue string as in the curl example
@@ -244,7 +261,7 @@ def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birt
         "eventValue": event_value
     })
     
-    print(colored(f"Alternative fetch - Beneficiary: {beneficiary_name}, Event value base: {event_value}", "cyan"))
+    _log(f"Alternative fetch - Beneficiary: {beneficiary_name}, Event value base: {event_value}", "cyan")
 
     # JavaScript code to perform the fetch request using modern API
     fetch_script = f"""
@@ -289,14 +306,14 @@ def alterative_fetch_post(driver, beneficiary_name, usual_name, first_name, birt
         response = driver.execute_async_script(fetch_script, payload)
         driver.set_script_timeout(original_timeout / 1000)  # Reset to original
     except Exception as e:
-        print(colored(f"Timeout or error in alternative fetch: {str(e)}", "red"))
+        _log(f"Timeout or error in alternative fetch: {str(e)}", "red")
         return None
     
     if isinstance(response, str) and response.startswith('Error'):
-        print(colored(f"Error in alternative fetch: {response}", "red"))
+        _log(f"Error in alternative fetch: {response}", "red")
         return None
     
-    print(colored(f"Alternative fetch successful - received {len(response) if response else 0} bytes", "green"))
+    _log(f"Alternative fetch successful - received {len(response) if response else 0} bytes", "green")
     return response
 
 # --- Main execution block ---
@@ -310,9 +327,9 @@ if __name__ == "__main__":
 
         # Convert to formatted JSON and print
         json_output = json.dumps(parsed_data, indent=2, ensure_ascii=False)
-        print(json_output)
+        _log(json_output)
 
     except FileNotFoundError:
-        print("Error: 'data.html' not found. Make sure the file is in the same directory as the script.")
+        _log("Error: 'data.html' not found. Make sure the file is in the same directory as the script.")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        _log(f"An error occurred: {e}")

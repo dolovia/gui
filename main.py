@@ -2,16 +2,18 @@ import json
 from bs4 import BeautifulSoup
 from collections import deque
 from queue import Queue
+from dataclasses import dataclass
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from threading import Thread
+from threading import Thread, Event
+from typing import Optional, Callable
 from time import sleep, time
 from datetime import datetime
-from utils import parse_rights_data, alterative_fetch_post
+from utils import parse_rights_data, alterative_fetch_post, set_logger
 import pandas as pd
 from termcolor import colored
 from config import WORKING_PORT, WORKER_NAME, BATCH_SIZE, SLEEP_PER_REQUEST, SLEEP_PER_BATCH
@@ -20,6 +22,28 @@ import os
 import signal
 import platform
 import shutil
+
+
+@dataclass
+class RunConfig:
+    working_port: int = WORKING_PORT
+    worker_name: str = WORKER_NAME
+    batch_size: int = BATCH_SIZE
+    sleep_per_request: int = SLEEP_PER_REQUEST
+    sleep_per_batch: int = SLEEP_PER_BATCH
+    names_file: str = "names.txt"
+    results_file: str = "results.xlsx"
+    pause_on_finish: int = 30
+
+
+def make_logger(
+    logger: Optional[Callable[[str], None]] = None,
+    use_color: bool = True
+) -> Callable[[str, Optional[str]], None]:
+    def _log(message: str, color: Optional[str] = None) -> None:
+        text = colored(message, color) if use_color and color else message
+        (logger or print)(text)
+    return _log
 
 
 def parse_html_to_dict(html):
@@ -47,22 +71,30 @@ def resolve_default_datesoins(driver):
     return datetime.now().strftime("%d%m%Y")
 
 
-def connect_driver():
+def connect_driver(working_port: int):
     options = Options()
-    options.debugger_address = f"127.0.0.1:{WORKING_PORT}"
+    options.debugger_address = f"127.0.0.1:{working_port}"
     return webdriver.Chrome(options=options)
 
 
-def connect_or_start_driver():
+def connect_or_start_driver(working_port: int, log: Callable[[str, Optional[str]], None]):
     try:
-        return connect_driver()
+        return connect_driver(working_port)
     except Exception:
-        print(colored("No existing Chrome debug session found. Starting one...", "yellow"))
-        start_chrome_debug()
-        return connect_driver()
+        log("No existing Chrome debug session found. Starting one...", "yellow")
+        start_chrome_debug(working_port, log)
+        return connect_driver(working_port)
 
 
-def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, naissance=''):
+def fetch_post_by_name(
+    driver,
+    nom='',
+    prenom='',
+    datesoins=None,
+    nni=None,
+    naissance='',
+    log: Optional[Callable[[str, Optional[str]], None]] = None
+):
     """Send a POST by nom/prenom (last name / first name) and return parsed data/status.
 
     Returns: (data_list or None, status_string)
@@ -133,9 +165,12 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
         }
             """
 
+    if log is None:
+        log = make_logger()
+
     response = driver.execute_async_script(js_code, nom, prenom, datesoins, nni_clean, naissance)
     if isinstance(response, str) and response.startswith('Error'):
-        print(colored(f"Error for {identifier}: {response}", "red"))
+        log(f"Error for {identifier}: {response}", "red")
         return None, 'error'
 
     try:
@@ -144,23 +179,26 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
         data = None
 
     if data is not None:
-        print(colored(f"Successfully fetched data for {identifier}", "green"))
+        log(f"Successfully fetched data for {identifier}", "green")
         return [data], 'success'
 
     # try to detect a candidate list and fetch alternative
     try:
         candidates = parse_all_candidate_rows(response)
-        print(colored(f" Found {len(candidates)} candidates for {identifier}", "yellow"))
+        log(f" Found {len(candidates)} candidates for {identifier}", "yellow")
     except Exception:
         candidates = []
     
     if candidates:
-        print(colored(f" {len(candidates)} users found for {identifier} Extracting each...", "yellow"))
+        log(f" {len(candidates)} users found for {identifier} Extracting each...", "yellow")
         successful_candidates = []
         
         # Loop through each candidate and scrape ALL of them
         for idx, candidate in enumerate(candidates, 1):
-            print(colored(f"  [{idx}/{len(candidates)}] Scraping: {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})", "cyan"))
+            log(
+                f"  [{idx}/{len(candidates)}] Scraping: {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})",
+                "cyan"
+            )
             
             teg = alterative_fetch_post(
                 driver,
@@ -175,12 +213,15 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
             try:
                 data = parse_rights_data(teg)
                 if data is not None:
-                    print(colored(f"  ✓ Successfully scraped candidate {idx}: {candidate['Nom du bénéficiaire']} {candidate['Prénom']}", "green"))
+                    log(f"  ✓ Successfully scraped candidate {idx}: {candidate['Nom du bénéficiaire']} {candidate['Prénom']}", "green")
                     successful_candidates.append(data)
                 else:
-                    print(colored(f"  ✗ Candidate {idx} returned empty data", "yellow"))
+                    log(f"  ✗ Candidate {idx} returned empty data", "yellow")
             except Exception:
-                print(colored(f"failed and skipping  {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})", "red"))
+                log(
+                    f"failed and skipping  {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})",
+                    "red"
+                )
                 # save only the NIR number (digits only) to failed/failed_candidates.txt
                 import os
                 os.makedirs('failed', exist_ok=True)
@@ -196,13 +237,13 @@ def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, nais
         
         # Return all successful candidates or insurance_issue if none succeeded
         if successful_candidates:
-            print(colored(f"✓ Successfully scraped {len(successful_candidates)} out of {len(candidates)} candidates", "green"))
+            log(f"✓ Successfully scraped {len(successful_candidates)} out of {len(candidates)} candidates", "green")
             return successful_candidates, 'success'
         else:
-            print(colored(f"All {len(candidates)} candidates failed to parse", "red"))
+            log(f"All {len(candidates)} candidates failed to parse", "red")
             return None, 'insurance_issue'
     else:
-        print(colored(f"No user found for {identifier}", "red"))
+        log(f"No user found for {identifier}", "red")
         return None, 'not_found'
 
 
@@ -334,7 +375,7 @@ def get_user_data_dir():
     raise OSError(f"Unsupported operating system: {system}")
 
 
-def start_chrome_debug():
+def start_chrome_debug(working_port: int, log: Callable[[str, Optional[str]], None]):
     """Start Chrome in debug mode on the specified port"""
     chrome_command = get_chrome_command()
     user_data_dir = get_user_data_dir()
@@ -343,22 +384,22 @@ def start_chrome_debug():
     os.makedirs(user_data_dir, exist_ok=True)
     
     try:
-        print(colored(f"Starting Chrome in debug mode on port {WORKING_PORT}...", "cyan"))
+        log(f"Starting Chrome in debug mode on port {working_port}...", "cyan")
         subprocess.Popen(
             chrome_command + [
-                f'--remote-debugging-port={WORKING_PORT}',
+                f'--remote-debugging-port={working_port}',
                 f'--user-data-dir={user_data_dir}'
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        print(colored("Chrome started successfully", "green"))
+        log("Chrome started successfully", "green")
         sleep(3)  # Wait for Chrome to fully start
     except FileNotFoundError:
-        print(colored("Error: Chrome/Chromium executable was not found", "red"))
+        log("Error: Chrome/Chromium executable was not found", "red")
         raise
     except Exception as e:
-        print(colored(f"Error starting Chrome: {e}", "red"))
+        log(f"Error starting Chrome: {e}", "red")
         raise
 
 
@@ -416,34 +457,74 @@ def start_cleanup_worker(initial_nnis, file_path, flush_every=25):
     return queue, thread
 
 
-def main():
+def run_job(
+    config: Optional[RunConfig] = None,
+    logger: Optional[Callable[[str], None]] = None,
+    use_color: bool = True,
+    progress_cb: Optional[Callable[[dict], None]] = None,
+    stop_event: Optional[Event] = None
+):
+    if config is None:
+        config = RunConfig()
+
+    log = make_logger(logger, use_color)
+    set_logger(logger, use_color)
     start_time = time()
+
+    file_path = config.names_file
+    save_file_name = config.results_file
+    processed_count = 0
+    total_lines = 0
+    results = []
+    not_found_list = []
+    insurance_issue_list = []
+    request_error_list = []
+    stop_requested = False
+
+    def build_summary(status: str, message: Optional[str] = None) -> dict:
+        end_time = time()
+        elapsed_time = end_time - start_time
+        hours = int(elapsed_time // 3600)
+        minutes = int((elapsed_time % 3600) // 60)
+        seconds = int(elapsed_time % 60)
+        return {
+            "status": status,
+            "message": message or "",
+            "processed": processed_count,
+            "total": total_lines,
+            "success": len(results),
+            "not_found": len(not_found_list),
+            "insurance_issue": len(insurance_issue_list),
+            "request_error": len(request_error_list),
+            "elapsed_seconds": int(elapsed_time),
+            "elapsed_hms": f"{hours}h {minutes}m {seconds}s",
+            "results_file": save_file_name,
+            "names_file": file_path,
+            "stopped": stop_requested
+        }
     
-    driver = connect_or_start_driver()
+    driver = connect_or_start_driver(config.working_port, log)
     driver.get("https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/accueilPQ.do")
     try:
         WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.ID, "idsoins")))
     except TimeoutException:
-        print(colored("Timed out waiting for the consultation form. Check login/session.", "red"))
-        return
+        log("Timed out waiting for the consultation form. Check login/session.", "red")
+        return build_summary("error", "Timed out waiting for the consultation form.")
 
     default_datesoins = resolve_default_datesoins(driver)
     
     # Use default file names
-    file_path = "names.txt"
-    save_file_name = "results.xlsx"
-    
-    print(colored(f"Using names file: {file_path}", "cyan"))
-    print(colored(f"Results will be saved to: {save_file_name}", "cyan"))
-    print(colored("Make sure the portal page is accessible in this Chrome session.", "green"))
-    print(colored(f"Processing started...using {WORKER_NAME}", "green"))
+    log(f"Using names file: {file_path}", "cyan")
+    log(f"Results will be saved to: {save_file_name}", "cyan")
+    log("Make sure the portal page is accessible in this Chrome session.", "green")
+    log(f"Processing started...using {config.worker_name}", "green")
     sleep(2)  # brief pause before starting
     # load existing results.xlsx (if any)
     try:
         df = pd.read_excel(save_file_name, engine='openpyxl')
         results = df.to_dict('records')
     except (FileNotFoundError, Exception):
-        print(colored(f"No existing results found, starting fresh.", "yellow"))
+        log("No existing results found, starting fresh.", "yellow")
         results = []
 
     # Load all names from text file into memory at once (OPTIMIZATION: avoid repeated file reads)
@@ -462,12 +543,12 @@ def main():
                         elif len(parts) == 1:
                             names_list.append({'nom': parts[0], 'prenom': ''})
     except FileNotFoundError:
-        print(colored(f"Error: File '{file_path}' not found.", "red"))
+        log(f"Error: File '{file_path}' not found.", "red")
         driver.quit()
-        return
+        return build_summary("error", f"Names file '{file_path}' not found.")
 
     total_lines = len(names_list)
-    print(colored(f"Total names to process: {total_lines}", "cyan"))
+    log(f"Total names to process: {total_lines}", "cyan")
 
     # Build a list of string keys for cleanup ("NOM PRENOM")
     initial_keys = []
@@ -493,13 +574,27 @@ def main():
         cleanup_queue, cleanup_thread = start_cleanup_worker(initial_keys, "names_remaining.txt")
 
     batch_counter = 0
-    processed_count = 0
-    not_found_list = []
-    insurance_issue_list = []
-    request_error_list = []
+
+    def emit_progress(current: Optional[str] = None) -> None:
+        if progress_cb:
+            progress_cb({
+                "processed": processed_count,
+                "total": total_lines,
+                "success": len(results),
+                "not_found": len(not_found_list),
+                "insurance_issue": len(insurance_issue_list),
+                "request_error": len(request_error_list),
+                "current": current
+            })
+
+    emit_progress()
 
     # Process names from loaded list
     for name in names_list:
+        if stop_event is not None and stop_event.is_set():
+            stop_requested = True
+            log("Stop requested. Finishing up current work...", "yellow")
+            break
         nni = str(name.get('nni', '')).strip()
         nom = str(name.get('nom', '')).strip()
         prenom = str(name.get('prenom', '')).strip()
@@ -511,7 +606,8 @@ def main():
                 nom=nom,
                 prenom=prenom,
                 datesoins=default_datesoins,
-                nni=nni
+                nni=nni,
+                log=log
             )
             if status == 'success' and result_list:
                 # result_list is now a list of dicts (all successful candidates)
@@ -527,7 +623,7 @@ def main():
                     flat_result['candidate_num'] = idx  # Track which candidate number this is
                     results.append(flat_result)
                     batch_counter += 1
-                    print(colored(f"  Added candidate {idx} to results", "green"))
+                    log(f"  Added candidate {idx} to results", "green")
             elif status == 'not_found':
                 not_found_list.append(search_key)
             elif status == 'insurance_issue':
@@ -536,20 +632,21 @@ def main():
                 request_error_list.append(search_key)
 
             # Save to Excel every BATCH_SIZE records (configurable)
-            if batch_counter >= BATCH_SIZE:
+            if batch_counter >= config.batch_size:
                 df = pd.DataFrame(results)
                 df.to_excel(save_file_name, index=False, engine='openpyxl')
-                print(colored(f"Batch saved: {len(results)} total records", "green"))
+                log(f"Batch saved: {len(results)} total records", "green")
                 batch_counter = 0
-                if SLEEP_PER_BATCH > 0:
-                    sleep(SLEEP_PER_BATCH)
+                if config.sleep_per_batch > 0:
+                    sleep(config.sleep_per_batch)
 
-            print(colored(f"Processed name: {search_key} [{processed_count}/{total_lines}]", "cyan"))
+            log(f"Processed name: {search_key} [{processed_count}/{total_lines}]", "cyan")
         finally:
             if cleanup_queue is not None:
                 cleanup_queue.put(search_key)
-        if SLEEP_PER_REQUEST > 0:
-            sleep(SLEEP_PER_REQUEST)
+        emit_progress(search_key)
+        if config.sleep_per_request > 0:
+            sleep(config.sleep_per_request)
 
     # Write all not-found records at once (OPTIMIZATION: batch write)
     if not_found_list:
@@ -568,7 +665,7 @@ def main():
     if results:
         df = pd.DataFrame(results)
         df.to_excel(save_file_name, index=False, engine='openpyxl')
-        print(colored(f"Final save: {len(results)} total records", "green"))
+        log(f"Final save: {len(results)} total records", "green")
 
     if cleanup_queue is not None:
         cleanup_queue.put(None)
@@ -580,19 +677,26 @@ def main():
     minutes = int((elapsed_time % 3600) // 60)
     seconds = int(elapsed_time % 60)
 
-    print(colored("="*50, "green"))
-    print(colored(f"Total processed: {processed_count}/{total_lines}", "green"))
-    print(colored(f"Successful: {len(results)}", "green"))
-    print(colored(f"Not found: {len(not_found_list)}", "yellow"))
-    print(colored(f"Insurance issues: {len(insurance_issue_list)}", "red"))
-    print(colored(f"Request errors: {len(request_error_list)}", "red"))
-    print(colored(f"Time taken: {hours}h {minutes}m {seconds}s", "cyan"))
-    print(colored("="*50, "green"))
-    print("Results saved to Excel.")
-    print("quitting in 30 seconds...")
-    sleep(30)
+    if stop_requested:
+        log("Processing stopped early. Partial results have been saved.", "yellow")
+
+    emit_progress()
+    log("="*50, "green")
+    log(f"Total processed: {processed_count}/{total_lines}", "green")
+    log(f"Successful: {len(results)}", "green")
+    log(f"Not found: {len(not_found_list)}", "yellow")
+    log(f"Insurance issues: {len(insurance_issue_list)}", "red")
+    log(f"Request errors: {len(request_error_list)}", "red")
+    log(f"Time taken: {hours}h {minutes}m {seconds}s", "cyan")
+    log("="*50, "green")
+    log("Results saved to Excel.")
+    if config.pause_on_finish > 0:
+        log(f"quitting in {config.pause_on_finish} seconds...")
+        sleep(config.pause_on_finish)
     #driver.quit()
+    status = "stopped" if stop_requested else "success"
+    return build_summary(status)
 
 
 if __name__ == "__main__":
-    main()
+    run_job()
