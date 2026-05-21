@@ -4,8 +4,13 @@ from collections import deque
 from queue import Queue
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 from threading import Thread
 from time import sleep, time
+from datetime import datetime
 from utils import parse_rights_data, alterative_fetch_post
 import pandas as pd
 from termcolor import colored
@@ -22,27 +27,83 @@ def parse_html_to_dict(html):
     return parse_rights_data(html)
 
 
-def fetch_post_by_name(driver, nom, prenom, datesoins='15102025'):
+def normalize_nni(value):
+    if value is None:
+        return ''
+    digits = ''.join(ch for ch in str(value) if ch.isdigit())
+    if len(digits) >= 13:
+        return digits[:13]
+    return digits
+
+
+def resolve_default_datesoins(driver):
+    try:
+        element = driver.find_element(By.ID, "idsoins")
+        value = element.get_attribute("value") or ""
+        if value.strip():
+            return value.strip()
+    except Exception:
+        pass
+    return datetime.now().strftime("%d%m%Y")
+
+
+def connect_driver():
+    options = Options()
+    options.debugger_address = f"127.0.0.1:{WORKING_PORT}"
+    return webdriver.Chrome(options=options)
+
+
+def connect_or_start_driver():
+    try:
+        return connect_driver()
+    except Exception:
+        print(colored("No existing Chrome debug session found. Starting one...", "yellow"))
+        start_chrome_debug()
+        return connect_driver()
+
+
+def fetch_post_by_name(driver, nom='', prenom='', datesoins=None, nni=None, naissance=''):
     """Send a POST by nom/prenom (last name / first name) and return parsed data/status.
 
     Returns: (data_list or None, status_string)
     status_string: 'success' (one or more candidates found), 'not_found', 'insurance_issue'
     When successful, returns a list of dicts with all successfully scraped candidates.
     """
+    nni_clean = normalize_nni(nni)
+    if nni_clean:
+        nom = ''
+        prenom = ''
+
+    identifier = nni_clean or f"{nom} {prenom}".strip()
+
+    if datesoins is None:
+        datesoins = ''
+
     js_code = """
         var cb = arguments[arguments.length - 1];
         var nomArg = arguments[0] || '';
         var prenomArg = arguments[1] || '';
         var datesoinsArg = arguments[2] || '';
+        var nniArg = arguments[3] || '';
+        var naissanceArg = arguments[4] || '';
 
         try {
-            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/Consultation.do';
+            var url = 'https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/Consultation.do';
+            var isHttps = window.location.href.toString().substring(0,5) === 'https';
+            function setcookie(name, value) {
+                document.cookie = name + '=' + value + '; path=/' + (isHttps ? '; secure' : '');
+            }
+            if (nniArg) { setcookie('NIR', nniArg); }
+            if (nomArg !== null) { setcookie('NOM', nomArg); }
+            if (prenomArg !== null) { setcookie('PRENOM', prenomArg); }
+            if (naissanceArg !== null) { setcookie('DATE_NAIS', naissanceArg); }
+            if (datesoinsArg !== null) { setcookie('DATE_SOINS', datesoinsArg); }
             var form = new URLSearchParams({
-                nni: '',
+                nni: nniArg,
                 nom: nomArg,
                 datesoins: datesoinsArg,
                 prenom: prenomArg,
-                naissance: ''
+                naissance: naissanceArg
             });
 
             fetch(url, {
@@ -72,77 +133,77 @@ def fetch_post_by_name(driver, nom, prenom, datesoins='15102025'):
         }
             """
 
-    response = driver.execute_async_script(js_code, nom, prenom, datesoins)
+    response = driver.execute_async_script(js_code, nom, prenom, datesoins, nni_clean, naissance)
     if isinstance(response, str) and response.startswith('Error'):
-        print(colored(f"Error for name {nom} {prenom}: {response}", "red"))
-        return None, 'not_found'
+        print(colored(f"Error for {identifier}: {response}", "red"))
+        return None, 'error'
 
     try:
         data = parse_rights_data(response)
-        if data:
-            print(colored(f"Successfully fetched data for {nom} {prenom}", "green"))
-            return [data], 'success'
-        return None, 'not_found'
-    except Exception as e:
-        #print(colored(f"Initial parse failed for {nom} {prenom}: {e}", "yellow"))
-        # try to detect a candidate list and fetch alternative
-        try:
-            candidates = parse_all_candidate_rows(response)
-            print(colored(f" Found {len(candidates)} candidates for {nom} {prenom}", "yellow"))
-        except Exception:
-            candidates = []
+    except Exception:
+        data = None
+
+    if data is not None:
+        print(colored(f"Successfully fetched data for {identifier}", "green"))
+        return [data], 'success'
+
+    # try to detect a candidate list and fetch alternative
+    try:
+        candidates = parse_all_candidate_rows(response)
+        print(colored(f" Found {len(candidates)} candidates for {identifier}", "yellow"))
+    except Exception:
+        candidates = []
+    
+    if candidates:
+        print(colored(f" {len(candidates)} users found for {identifier} Extracting each...", "yellow"))
+        successful_candidates = []
         
-        if candidates:
-            print(colored(f" {len(candidates)} users found for {nom} {prenom} Extracting each...", "yellow"))
-            successful_candidates = []
+        # Loop through each candidate and scrape ALL of them
+        for idx, candidate in enumerate(candidates, 1):
+            print(colored(f"  [{idx}/{len(candidates)}] Scraping: {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})", "cyan"))
             
-            # Loop through each candidate and scrape ALL of them
-            for idx, candidate in enumerate(candidates, 1):
-                print(colored(f"  [{idx}/{len(candidates)}] Scraping: {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})", "cyan"))
-                
-                teg = alterative_fetch_post(
-                    driver,
-                    candidate['Nom du bénéficiaire'],
-                    candidate['Nom usage'],
-                    candidate['Prénom'],
-                    candidate['Date de naissance'],
-                    candidate['NIR']
-                )
-                
-                try:
-                    data = parse_rights_data(teg)
-                    if data:
-                        print(colored(f"  ✓ Successfully scraped candidate {idx}: {candidate['Nom du bénéficiaire']} {candidate['Prénom']}", "green"))
-                        successful_candidates.append(data)
-                    else:
-                        print(colored(f"  ✗ Candidate {idx} returned empty data", "yellow"))
-                except Exception as ee:
-                   # print(colored(f"  ✗ Failed to scrape candidate {idx}: {ee}", "red"))
-                    print(colored(f"failed and skipping  {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})", "red"))
-                   # print(colored(f"   candidate Nom usage: {candidate['Nom usage']}", "yellow"))
-                    # save only the NIR number (digits only) to failed/failed_candidates.txt
-                    import os
-                    os.makedirs('failed', exist_ok=True)
-                    nir_raw = candidate.get('NIR', '')
-                    nir_digits = ''.join(ch for ch in str(nir_raw) if ch.isdigit())
-                    if nir_digits:
-                        failed_nir = nir_digits
-                    else:
-                        failed_nir = str(nir_raw).strip()
-                    with open('failed/failed_candidates.txt', 'a') as f:
-                        f.write(f"{failed_nir}\n")
-                    continue
-                
-            # Return all successful candidates or insurance_issue if none succeeded
-            if successful_candidates:
-                print(colored(f"✓ Successfully scraped {len(successful_candidates)} out of {len(candidates)} candidates", "green"))
-                return successful_candidates, 'success'
-            else:
-                print(colored(f"All {len(candidates)} candidates failed to parse", "red"))
-                return None, 'insurance_issue'
+            teg = alterative_fetch_post(
+                driver,
+                candidate['Nom du bénéficiaire'],
+                candidate['Nom usage'],
+                candidate['Prénom'],
+                candidate['Date de naissance'],
+                candidate['NIR'],
+                candidate.get('event_value')
+            )
+            
+            try:
+                data = parse_rights_data(teg)
+                if data is not None:
+                    print(colored(f"  ✓ Successfully scraped candidate {idx}: {candidate['Nom du bénéficiaire']} {candidate['Prénom']}", "green"))
+                    successful_candidates.append(data)
+                else:
+                    print(colored(f"  ✗ Candidate {idx} returned empty data", "yellow"))
+            except Exception:
+                print(colored(f"failed and skipping  {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})", "red"))
+                # save only the NIR number (digits only) to failed/failed_candidates.txt
+                import os
+                os.makedirs('failed', exist_ok=True)
+                nir_raw = candidate.get('NIR', '')
+                nir_digits = ''.join(ch for ch in str(nir_raw) if ch.isdigit())
+                if nir_digits:
+                    failed_nir = nir_digits
+                else:
+                    failed_nir = str(nir_raw).strip()
+                with open('failed/failed_candidates.txt', 'a') as f:
+                    f.write(f"{failed_nir}\n")
+                continue
+        
+        # Return all successful candidates or insurance_issue if none succeeded
+        if successful_candidates:
+            print(colored(f"✓ Successfully scraped {len(successful_candidates)} out of {len(candidates)} candidates", "green"))
+            return successful_candidates, 'success'
         else:
-            print(colored(f"No user found for {nom} {prenom}", "red"))
-            return None, 'not_found'
+            print(colored(f"All {len(candidates)} candidates failed to parse", "red"))
+            return None, 'insurance_issue'
+    else:
+        print(colored(f"No user found for {identifier}", "red"))
+        return None, 'not_found'
 
 
 def parse_all_candidate_rows(html):
@@ -152,7 +213,7 @@ def parse_all_candidate_rows(html):
     
     # find the header row that contains "Nom du bénéficiaire"
     header_row = None
-    for tr in soup.find_all('tr', class_='titreTableau'):
+    for tr in soup.find_all('tr'):
         if 'Nom du bénéficiaire' in tr.get_text(" ", strip=True):
             header_row = tr
             break
@@ -172,12 +233,25 @@ def parse_all_candidate_rows(html):
         if len(tds) < 5:
             continue
 
+        event_value = None
+        link = row.find('a', href=True)
+        if link and 'selectLineByKey' in link.get('href', ''):
+            href = link.get('href', '')
+            parts = href.split(',')
+            if len(parts) >= 2 and "'" in parts[1]:
+                event_value = parts[1].split("'")[1]
+        if not event_value and link and link.get('id'):
+            link_id = link.get('id', '')
+            if '###' in link_id:
+                event_value = link_id.split('###')[-1]
+
         candidate = {
             'Nom du bénéficiaire': tds[0].get_text(strip=True),
             'Nom usage': tds[1].get_text(strip=True),
             'Prénom': tds[2].get_text(strip=True),
             'Date de naissance': tds[3].get_text(strip=True),
             'NIR': tds[4].get_text(strip=True),
+            'event_value': event_value
         }
         candidates.append(candidate)
     
@@ -345,15 +419,15 @@ def start_cleanup_worker(initial_nnis, file_path, flush_every=25):
 def main():
     start_time = time()
     
-    # Kill existing Chrome processes and start fresh
-    kill_chrome_processes()
-    start_chrome_debug()
-    
-    options = Options()
-    options.debugger_address = f"127.0.0.1:{WORKING_PORT}"
-    driver = webdriver.Chrome(options=options)
-    driver.get("https://portail.sesam-vitale.fr/cdr/amo/CNAMTS/PQ_J/accueilPQ.do")
-    sleep(5)  # Wait for the page to load
+    driver = connect_or_start_driver()
+    driver.get("https://portail.sesam-vitale.fr/cdr/amo/CNAM/PQ_J/accueilPQ.do")
+    try:
+        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.ID, "idsoins")))
+    except TimeoutException:
+        print(colored("Timed out waiting for the consultation form. Check login/session.", "red"))
+        return
+
+    default_datesoins = resolve_default_datesoins(driver)
     
     # Use default file names
     file_path = "names.txt"
@@ -361,7 +435,7 @@ def main():
     
     print(colored(f"Using names file: {file_path}", "cyan"))
     print(colored(f"Results will be saved to: {save_file_name}", "cyan"))
-    print(colored("make sure you opened chrome from cmd and logged in", "green"))
+    print(colored("Make sure the portal page is accessible in this Chrome session.", "green"))
     print(colored(f"Processing started...using {WORKER_NAME}", "green"))
     sleep(2)  # brief pause before starting
     # load existing results.xlsx (if any)
@@ -379,11 +453,14 @@ def main():
             for line in f:
                 line = line.strip()
                 if line:  # Skip empty lines
-                    parts = line.split(maxsplit=1)  # Split on first whitespace
-                    if len(parts) == 2:
-                        names_list.append({'nom': parts[0], 'prenom': parts[1]})
-                    elif len(parts) == 1:
-                        names_list.append({'nom': parts[0], 'prenom': ''})
+                    if line.isdigit() and len(line) >= 13:
+                        names_list.append({'nni': line})
+                    else:
+                        parts = line.split(maxsplit=1)  # Split on first whitespace
+                        if len(parts) == 2:
+                            names_list.append({'nom': parts[0], 'prenom': parts[1]})
+                        elif len(parts) == 1:
+                            names_list.append({'nom': parts[0], 'prenom': ''})
     except FileNotFoundError:
         print(colored(f"Error: File '{file_path}' not found.", "red"))
         driver.quit()
@@ -396,6 +473,10 @@ def main():
     initial_keys = []
     for r in names_list:
         try:
+            nni = str(r.get('nni', '')).strip()
+        except Exception:
+            nni = ''
+        try:
             n = str(r.get('nom', '')).strip()
         except Exception:
             n = ''
@@ -403,7 +484,7 @@ def main():
             p = str(r.get('prenom', '')).strip()
         except Exception:
             p = ''
-        key = f"{n} {p}".strip()
+        key = nni if nni else f"{n} {p}".strip()
         initial_keys.append(key)
 
     cleanup_queue = None
@@ -415,30 +496,44 @@ def main():
     processed_count = 0
     not_found_list = []
     insurance_issue_list = []
+    request_error_list = []
 
     # Process names from loaded list
     for name in names_list:
+        nni = str(name.get('nni', '')).strip()
         nom = str(name.get('nom', '')).strip()
         prenom = str(name.get('prenom', '')).strip()
+        search_key = nni if nni else f"{nom} {prenom}".strip()
         processed_count += 1
         try:
-            result_list, status = fetch_post_by_name(driver, nom, prenom)
+            result_list, status = fetch_post_by_name(
+                driver,
+                nom=nom,
+                prenom=prenom,
+                datesoins=default_datesoins,
+                nni=nni
+            )
             if status == 'success' and result_list:
                 # result_list is now a list of dicts (all successful candidates)
                 for idx, result in enumerate(result_list, 1):
                     # Flatten nested structure for Excel
                     flat_result = flatten_dict(result)
                     # include the searched name for traceability
-                    flat_result['search_nom'] = nom
-                    flat_result['search_prenom'] = prenom
+                    if nni:
+                        flat_result['search_nni'] = nni
+                    else:
+                        flat_result['search_nom'] = nom
+                        flat_result['search_prenom'] = prenom
                     flat_result['candidate_num'] = idx  # Track which candidate number this is
                     results.append(flat_result)
                     batch_counter += 1
                     print(colored(f"  Added candidate {idx} to results", "green"))
             elif status == 'not_found':
-                not_found_list.append(f"{nom} {prenom}".strip())
+                not_found_list.append(search_key)
             elif status == 'insurance_issue':
-                insurance_issue_list.append(f"{nom} {prenom}".strip())
+                insurance_issue_list.append(search_key)
+            elif status == 'error':
+                request_error_list.append(search_key)
 
             # Save to Excel every BATCH_SIZE records (configurable)
             if batch_counter >= BATCH_SIZE:
@@ -449,10 +544,10 @@ def main():
                 if SLEEP_PER_BATCH > 0:
                     sleep(SLEEP_PER_BATCH)
 
-            print(colored(f"Processed name: {nom} {prenom} [{processed_count}/{total_lines}]", "cyan"))
+            print(colored(f"Processed name: {search_key} [{processed_count}/{total_lines}]", "cyan"))
         finally:
             if cleanup_queue is not None:
-                cleanup_queue.put(f"{nom} {prenom}".strip())
+                cleanup_queue.put(search_key)
         if SLEEP_PER_REQUEST > 0:
             sleep(SLEEP_PER_REQUEST)
 
@@ -465,6 +560,9 @@ def main():
     if insurance_issue_list:
         with open("insurance_issue.txt", "a", encoding="utf-8") as ii:
             ii.writelines([f"{name}\n" for name in insurance_issue_list])
+    if request_error_list:
+        with open("request_errors.txt", "a", encoding="utf-8") as re:
+            re.writelines([f"{name}\n" for name in request_error_list])
 
     # save any remaining results to results.xlsx
     if results:
@@ -487,6 +585,7 @@ def main():
     print(colored(f"Successful: {len(results)}", "green"))
     print(colored(f"Not found: {len(not_found_list)}", "yellow"))
     print(colored(f"Insurance issues: {len(insurance_issue_list)}", "red"))
+    print(colored(f"Request errors: {len(request_error_list)}", "red"))
     print(colored(f"Time taken: {hours}h {minutes}m {seconds}s", "cyan"))
     print(colored("="*50, "green"))
     print("Results saved to Excel.")
