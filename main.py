@@ -5,6 +5,7 @@ from queue import Queue
 from dataclasses import dataclass
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -30,6 +31,7 @@ from config import (
 )
 import subprocess
 import os
+import sys
 import signal
 import platform
 import shutil
@@ -97,13 +99,80 @@ def resolve_default_datesoins(driver):
 def connect_driver(working_port: int):
     options = Options()
     options.debugger_address = f"127.0.0.1:{working_port}"
+    chromedriver_path = resolve_chromedriver_path()
+    if chromedriver_path:
+        return webdriver.Chrome(service=Service(chromedriver_path), options=options)
     return webdriver.Chrome(options=options)
+
+
+def get_app_base_dir() -> str:
+    """Return the directory that contains bundled runtime assets."""
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def get_executable_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def resolve_chromedriver_path() -> Optional[str]:
+    """Find a local chromedriver for source runs and PyInstaller builds."""
+    env_path = os.environ.get("CHROMEDRIVER_PATH")
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    home_dir = os.path.expanduser("~")
+    selenium_cache_candidates = [
+        os.path.join(
+            home_dir,
+            ".cache",
+            "selenium",
+            "chromedriver",
+            "win64",
+            "148.0.7778.178",
+            "chromedriver.exe",
+        ),
+    ]
+    for candidate in selenium_cache_candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
+    executable_dir = get_executable_dir()
+    base_dir = get_app_base_dir()
+    driver_names = ["chromedriver.exe", "chromedriver"]
+    candidate_dirs = [
+        executable_dir,
+        os.path.join(executable_dir, "drivers"),
+        base_dir,
+        os.path.join(base_dir, "drivers"),
+    ]
+
+    for candidate_dir in candidate_dirs:
+        for driver_name in driver_names:
+            candidate = os.path.join(candidate_dir, driver_name)
+            if os.path.isfile(candidate):
+                return candidate
+
+    for driver_name in driver_names:
+        system_path = shutil.which(driver_name)
+        if system_path:
+            return system_path
+
+    return None
 
 
 def connect_or_start_driver(working_port: int, log: Callable[[str, Optional[str]], None]):
     try:
         return connect_driver(working_port)
     except Exception:
+        if getattr(sys, "frozen", False) and resolve_chromedriver_path() is None:
+            raise RuntimeError(
+                "chromedriver was not bundled with this executable. "
+                "Place chromedriver.exe next to the exe or set CHROMEDRIVER_PATH."
+            )
         log("No existing Chrome debug session found. Starting one...", "yellow")
         start_chrome_debug(working_port, log)
         return connect_driver(working_port)
