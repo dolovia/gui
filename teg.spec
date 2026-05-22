@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 project_dir = Path(__file__).resolve().parent
 datas = collect_data_files("bs4")
+hiddenimports = collect_submodules("selenium")
 binaries = []
 
 for candidate in (
@@ -22,7 +23,7 @@ a = Analysis(
     pathex=[str(project_dir)],
     binaries=binaries,
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
