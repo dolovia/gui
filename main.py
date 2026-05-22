@@ -102,7 +102,9 @@ def fetch_post_by_name(
     nni=None,
     naissance='',
     log: Optional[Callable[[str, Optional[str]], None]] = None,
-    sleep_per_candidate: int = 0
+    sleep_per_candidate: int = 0,
+    stop_event: Optional[Event] = None,
+    pause_event: Optional[Event] = None
 ):
     """Send a POST by nom/prenom (last name / first name) and return parsed data/status.
 
@@ -201,9 +203,28 @@ def fetch_post_by_name(
     if candidates:
         log(f" {len(candidates)} users found for {identifier} Extracting each...", "yellow")
         successful_candidates = []
+
+        def wait_if_paused() -> bool:
+            while pause_event is not None and pause_event.is_set():
+                if stop_event is not None and stop_event.is_set():
+                    return True
+                sleep(0.2)
+            return stop_event is not None and stop_event.is_set()
+
+        def interruptible_sleep(seconds: int) -> bool:
+            remaining = max(0.0, float(seconds))
+            while remaining > 0:
+                if wait_if_paused():
+                    return True
+                step = min(0.2, remaining)
+                sleep(step)
+                remaining -= step
+            return False
         
         # Loop through each candidate and scrape ALL of them
         for idx, candidate in enumerate(candidates, 1):
+            if wait_if_paused():
+                return None, 'error'
             log(
                 f"  [{idx}/{len(candidates)}] Scraping: {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})",
                 "cyan"
@@ -246,7 +267,8 @@ def fetch_post_by_name(
 
             if sleep_per_candidate > 0 and idx < len(candidates):
                 log(f"  Sleeping {sleep_per_candidate}s before next candidate...", "yellow")
-                sleep(sleep_per_candidate)
+                if interruptible_sleep(sleep_per_candidate):
+                    return None, 'error'
         
         # Return all successful candidates or insurance_issue if none succeeded
         if successful_candidates:
@@ -475,7 +497,8 @@ def run_job(
     logger: Optional[Callable[[str], None]] = None,
     use_color: bool = True,
     progress_cb: Optional[Callable[[dict], None]] = None,
-    stop_event: Optional[Event] = None
+    stop_event: Optional[Event] = None,
+    pause_event: Optional[Event] = None
 ):
     if config is None:
         config = RunConfig()
@@ -503,13 +526,46 @@ def run_job(
             return 0
 
     initial_failed_candidates = count_nonempty_lines(failed_candidates_file)
+    paused_seconds = 0.0
+    pause_started_at: Optional[float] = None
 
     def current_failed_candidates_count() -> int:
         return max(0, count_nonempty_lines(failed_candidates_file) - initial_failed_candidates)
 
+    def wait_if_paused() -> bool:
+        nonlocal paused_seconds, pause_started_at
+        while pause_event is not None and pause_event.is_set():
+            if pause_started_at is None:
+                pause_started_at = time()
+                log("Processing paused.", "yellow")
+            if stop_event is not None and stop_event.is_set():
+                if pause_started_at is not None:
+                    paused_seconds += time() - pause_started_at
+                    pause_started_at = None
+                return True
+            sleep(0.2)
+        if pause_started_at is not None:
+            paused_seconds += time() - pause_started_at
+            pause_started_at = None
+            log("Processing resumed.", "green")
+        return stop_event is not None and stop_event.is_set()
+
+    def interruptible_sleep(seconds: int) -> bool:
+        remaining = max(0.0, float(seconds))
+        while remaining > 0:
+            if wait_if_paused():
+                return True
+            step = min(0.2, remaining)
+            sleep(step)
+            remaining -= step
+        return False
+
     def build_summary(status: str, message: Optional[str] = None) -> dict:
         end_time = time()
-        elapsed_time = end_time - start_time
+        effective_paused = paused_seconds
+        if pause_started_at is not None:
+            effective_paused += time() - pause_started_at
+        elapsed_time = max(0.0, end_time - start_time - effective_paused)
         hours = int(elapsed_time // 3600)
         minutes = int((elapsed_time % 3600) // 60)
         seconds = int(elapsed_time % 60)
@@ -545,7 +601,9 @@ def run_job(
     log(f"Results will be saved to: {save_file_name}", "cyan")
     log("Make sure the portal page is accessible in this Chrome session.", "green")
     log(f"Processing started...using {config.worker_name}", "green")
-    sleep(2)  # brief pause before starting
+    if interruptible_sleep(2):
+        stop_requested = True
+        return build_summary("stopped", "Processing stopped before start.")
     # load existing results.xlsx (if any)
     try:
         df = pd.read_excel(save_file_name, engine='openpyxl')
@@ -619,6 +677,10 @@ def run_job(
 
     # Process names from loaded list
     for name in names_list:
+        if wait_if_paused():
+            stop_requested = True
+            log("Stop requested. Finishing up current work...", "yellow")
+            break
         if stop_event is not None and stop_event.is_set():
             stop_requested = True
             log("Stop requested. Finishing up current work...", "yellow")
@@ -636,7 +698,9 @@ def run_job(
                 datesoins=default_datesoins,
                 nni=nni,
                 log=log,
-                sleep_per_candidate=config.sleep_per_candidate
+                sleep_per_candidate=config.sleep_per_candidate,
+                stop_event=stop_event,
+                pause_event=pause_event
             )
             if status == 'success' and result_list:
                 # result_list is now a list of dicts (all successful candidates)
@@ -658,6 +722,10 @@ def run_job(
             elif status == 'insurance_issue':
                 insurance_issue_list.append(search_key)
             elif status == 'error':
+                if stop_event is not None and stop_event.is_set():
+                    stop_requested = True
+                    log("Stop requested. Finishing up current work...", "yellow")
+                    break
                 request_error_list.append(search_key)
 
             # Save to Excel every BATCH_SIZE records (configurable)
@@ -667,7 +735,10 @@ def run_job(
                 log(f"Batch saved: {len(results)} total records", "green")
                 batch_counter = 0
                 if config.sleep_per_batch > 0:
-                    sleep(config.sleep_per_batch)
+                    if interruptible_sleep(config.sleep_per_batch):
+                        stop_requested = True
+                        log("Stop requested. Finishing up current work...", "yellow")
+                        break
 
             log(f"Processed name: {search_key} [{processed_count}/{total_lines}]", "cyan")
         finally:
@@ -675,7 +746,10 @@ def run_job(
                 cleanup_queue.put(search_key)
         emit_progress(search_key)
         if config.sleep_per_request > 0:
-            sleep(config.sleep_per_request)
+            if interruptible_sleep(config.sleep_per_request):
+                stop_requested = True
+                log("Stop requested. Finishing up current work...", "yellow")
+                break
 
     # Write all not-found records at once (OPTIMIZATION: batch write)
     if not_found_list:

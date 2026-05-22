@@ -17,8 +17,11 @@ class ManagerApp(tk.Tk):
         self._queue: queue.Queue = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
         self._stop_event: Optional[threading.Event] = None
+        self._pause_event: Optional[threading.Event] = None
         self._run_started_at: Optional[float] = None
         self._final_elapsed_seconds: Optional[int] = None
+        self._paused_started_at: Optional[float] = None
+        self._paused_accumulated_seconds: float = 0.0
         self._last_progress: dict = {}
         self._log_records: list[dict] = []
 
@@ -81,9 +84,11 @@ class ManagerApp(tk.Tk):
         button_frame = ttk.Frame(config_frame)
         button_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.start_button = ttk.Button(button_frame, text="Start", command=self._start_run)
+        self.pause_button = ttk.Button(button_frame, text="Pause", command=self._toggle_pause, state="disabled")
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self._stop_run, state="disabled")
         self.start_button.grid(row=0, column=0, padx=(0, 8))
-        self.stop_button.grid(row=0, column=1)
+        self.pause_button.grid(row=0, column=1, padx=(0, 8))
+        self.stop_button.grid(row=0, column=2)
 
         progress_frame = ttk.LabelFrame(self, text="Progress")
         progress_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
@@ -247,8 +252,11 @@ class ManagerApp(tk.Tk):
             return
 
         self._stop_event = threading.Event()
+        self._pause_event = threading.Event()
         self._run_started_at = time()
         self._final_elapsed_seconds = None
+        self._paused_started_at = None
+        self._paused_accumulated_seconds = 0.0
         self._last_progress = {"processed": 0, "total": 0}
         self._log_records.clear()
         self._clear_log_view()
@@ -267,8 +275,28 @@ class ManagerApp(tk.Tk):
     def _stop_run(self) -> None:
         if self._stop_event:
             self._stop_event.set()
+            if self._pause_event:
+                self._pause_event.clear()
+            self._resume_elapsed_clock()
+            self.pause_button.configure(state="disabled", text="Pause")
             self._set_status_badge("Stopping")
             self._append_log("Stop requested.")
+
+    def _toggle_pause(self) -> None:
+        if not self._pause_event:
+            return
+        if self._pause_event.is_set():
+            self._pause_event.clear()
+            self._resume_elapsed_clock()
+            self.pause_button.configure(text="Pause")
+            self._set_status_badge("Running")
+            self._append_log("Resume requested.")
+        else:
+            self._pause_event.set()
+            self._paused_started_at = time()
+            self.pause_button.configure(text="Resume")
+            self._set_status_badge("Paused")
+            self._append_log("Pause requested.")
 
     def _run_worker(self, config: RunConfig) -> None:
         def log(message: str) -> None:
@@ -283,7 +311,8 @@ class ManagerApp(tk.Tk):
                 logger=log,
                 use_color=False,
                 progress_cb=progress,
-                stop_event=self._stop_event
+                stop_event=self._stop_event,
+                pause_event=self._pause_event
             )
             self._queue.put(("summary", summary))
             if not summary:
@@ -347,9 +376,12 @@ class ManagerApp(tk.Tk):
         if running:
             self._set_status_badge("Running")
             self.start_button.configure(state="disabled")
+            self.pause_button.configure(state="normal", text="Pause")
             self.stop_button.configure(state="normal")
         else:
+            self._resume_elapsed_clock()
             self.start_button.configure(state="normal")
+            self.pause_button.configure(state="disabled", text="Pause")
             self.stop_button.configure(state="disabled")
 
     def _append_log(self, message: str) -> None:
@@ -460,7 +492,7 @@ class ManagerApp(tk.Tk):
         if self._final_elapsed_seconds is not None:
             elapsed_seconds = self._final_elapsed_seconds
         else:
-            elapsed_seconds = max(0, int(time() - self._run_started_at))
+            elapsed_seconds = max(0, int(time() - self._run_started_at - self._current_pause_offset()))
         self.elapsed_var.set(self._format_seconds(elapsed_seconds))
 
         processed = int(self._last_progress.get("processed", 0))
@@ -486,6 +518,16 @@ class ManagerApp(tk.Tk):
         background, foreground = colors.get(status, ("#e5e7eb", "#111827"))
         self.status_var.set(status)
         self.status_badge.configure(bg=background, fg=foreground)
+
+    def _current_pause_offset(self) -> float:
+        if self._paused_started_at is None:
+            return self._paused_accumulated_seconds
+        return self._paused_accumulated_seconds + (time() - self._paused_started_at)
+
+    def _resume_elapsed_clock(self) -> None:
+        if self._paused_started_at is not None:
+            self._paused_accumulated_seconds += time() - self._paused_started_at
+            self._paused_started_at = None
 
     @staticmethod
     def _format_seconds(value: int) -> str:
