@@ -1,4 +1,5 @@
 import json
+import re
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 from termcolor import colored
@@ -245,12 +246,34 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
                 if len(cells_r2) >= 3:
                     organisme_gestion['centre_gestion'] = get_value_from_label(cells_r2[2])
     data['organisme_gestion'] = organisme_gestion
+    def extract_period(value: Optional[str]):
+        cleaned = _clean_text(value)
+        if not cleaned:
+            return None, None
+        match = re.search(r"\b[Dd]u\s+(\d{2}/\d{2}/\d{4}).*?\b[Aa]u\s+(\d{2}/\d{2}/\d{4})", cleaned)
+        if match:
+            return match.group(1), match.group(2)
+        return None, None
+
+    def derive_status(value: Optional[str], is_active: Optional[bool], has_period: bool):
+        if has_period:
+            if is_active is None:
+                return _clean_text(value) or None
+            return "Ouverts" if is_active else "Fermés"
+        if value:
+            return _clean_text(value)
+        if is_active is None:
+            return None
+        return "Ouverts" if is_active else "Fermés"
+
     # 5. Droits et Couvertures (Rights and Coverage)
     droits_couvertures = {}
-    img_element = soup.find('img', {'src': 'images/bt_vert.gif'})
+    img_element = soup.find('img', src=lambda s: s and 'bt_vert.gif' in s)
     rights_table = img_element.find_parent('table') if img_element else None
     if not rights_table:
-        rights_header = soup.find(string=lambda t: t and "Droits" in t and "Couvertures" in t)
+        rights_header = soup.find(
+            string=lambda t: t and "droits" in t.lower() and "couvertures" in t.lower()
+        )
         if rights_header:
             rights_table = rights_header.parent.find_parent('table')
     if rights_table:
@@ -262,19 +285,17 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
             status_img = cells[0].find('img') if cells else None
             status_src = status_img['src'] if status_img and status_img.has_attr('src') else ''
 
-            label_text = cells[1].get_text(strip=True)
-            value_text = cells[2].get_text(strip=True)
+            label_text = _clean_text(cells[1].get_text(" ", strip=True))
+            value_text = _clean_text(cells[2].get_text(" ", strip=True))
             is_active = 'bt_vert.gif' in status_src if status_src else None
 
             if "ouverture des droits" in label_text.lower():
-                if is_active is None:
-                    item = {'statut': value_text}
-                else:
-                    item = {'statut': "Ouverts" if is_active else "Fermés"}
-                if is_active:
-                    parts = value_text.split()
-                    item['periode_debut'] = parts[1]
-                    item['periode_fin'] = parts[3]
+                period_start, period_end = extract_period(value_text)
+                has_period = bool(period_start and period_end)
+                item = {'statut': derive_status(value_text, is_active, has_period)}
+                if has_period:
+                    item['periode_debut'] = period_start
+                    item['periode_fin'] = period_end
                 droits_couvertures['regime_base'] = item
             
             elif "exonération du ticket modérateur" in label_text.lower():
@@ -284,14 +305,12 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
                 droits_couvertures['modulation_ticket_moderateur'] = {'statut': value_text}
             
             elif "complémentaire santé solidaire" in label_text.lower():
-                if is_active is None:
-                    item = {'statut': value_text}
-                else:
-                    item = {'statut': "Ouverts" if is_active else "Fermés"}
-                if is_active:
-                    parts = value_text.split()
-                    item['periode_debut'] = parts[1]
-                    item['periode_fin'] = parts[3]
+                period_start, period_end = extract_period(value_text)
+                has_period = bool(period_start and period_end)
+                item = {'statut': derive_status(value_text, is_active, has_period)}
+                if has_period:
+                    item['periode_debut'] = period_start
+                    item['periode_fin'] = period_end
                 droits_couvertures['complementaire_sante_solidaire'] = item
             
             elif "médecin traitant" in label_text.lower():
