@@ -268,8 +268,25 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
 
     # 5. Droits et Couvertures (Rights and Coverage)
     droits_couvertures = {}
-    img_element = soup.find('img', src=lambda s: s and 'bt_vert.gif' in s)
-    rights_table = img_element.find_parent('table') if img_element else None
+    rights_table = None
+    rights_row = None
+    for tr in soup.find_all('tr'):
+        cells = tr.find_all('td')
+        if len(cells) < 3:
+            continue
+        status_img = cells[0].find('img')
+        status_src = status_img['src'] if status_img and status_img.has_attr('src') else ''
+        if 'bt_' not in status_src:
+            continue
+        label_text = _normalize_text(cells[1].get_text(" ", strip=True))
+        if "ouverture des droits" in label_text:
+            rights_row = tr
+            break
+    if rights_row:
+        rights_table = rights_row.find_parent('table')
+    if not rights_table:
+        img_element = soup.find('img', src=lambda s: s and 'bt_vert.gif' in s)
+        rights_table = img_element.find_parent('table') if img_element else None
     if not rights_table:
         rights_header = soup.find(
             string=lambda t: t and "droits" in t.lower() and "couvertures" in t.lower()
@@ -285,8 +302,12 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
             status_img = cells[0].find('img') if cells else None
             status_src = status_img['src'] if status_img and status_img.has_attr('src') else ''
 
-            label_text = _clean_text(cells[1].get_text(" ", strip=True))
-            value_text = _clean_text(cells[2].get_text(" ", strip=True))
+            label_cell = cells[1]
+            value_cell = cells[2]
+            label_node = label_cell.find('font', class_='lib') or label_cell
+            value_node = value_cell.find('font', class_='lib') or value_cell
+            label_text = _clean_text(label_node.get_text(" ", strip=True))
+            value_text = _clean_text(value_node.get_text(" ", strip=True))
             is_active = 'bt_vert.gif' in status_src if status_src else None
 
             if "ouverture des droits" in label_text.lower():
@@ -305,12 +326,18 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
                 droits_couvertures['modulation_ticket_moderateur'] = {'statut': value_text}
             
             elif "complémentaire santé solidaire" in label_text.lower():
-                period_start, period_end = extract_period(value_text)
-                has_period = bool(period_start and period_end)
-                item = {'statut': derive_status(value_text, is_active, has_period)}
-                if has_period:
-                    item['periode_debut'] = period_start
-                    item['periode_fin'] = period_end
+                normalized_value = _normalize_text(value_text)
+                if not value_text and is_active is False:
+                    item = {'statut': "NON"}
+                elif "non" in normalized_value or "bénéficiaire non concerné" in normalized_value:
+                    item = {'statut': value_text or "NON"}
+                else:
+                    period_start, period_end = extract_period(value_text)
+                    has_period = bool(period_start and period_end)
+                    item = {'statut': derive_status(value_text, is_active, has_period)}
+                    if has_period:
+                        item['periode_debut'] = period_start
+                        item['periode_fin'] = period_end
                 droits_couvertures['complementaire_sante_solidaire'] = item
             
             elif "médecin traitant" in label_text.lower():
