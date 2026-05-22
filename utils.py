@@ -9,6 +9,21 @@ _logger: Optional[Callable[[str], None]] = None
 _use_color = True
 
 
+def _normalize_text(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    text = str(value).replace("\xa0", " ")
+    text = text.replace("´", "'").replace("’", "'").replace("`", "'")
+    text = " ".join(text.split())
+    return text.strip().lower()
+
+
+def _clean_text(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return " ".join(str(value).replace("\xa0", " ").split())
+
+
 def set_logger(logger: Optional[Callable[[str], None]] = None, use_color: bool = True) -> None:
     global _logger, _use_color
     _logger = logger
@@ -31,10 +46,15 @@ def _has_results_markers(soup: BeautifulSoup) -> bool:
         "ouverture des droits",
         "droits et couvertures",
     ]
-    for marker in markers:
-        if soup.find(string=lambda t: t and marker in t.lower()):
-            return True
-    return False
+    normalized_markers = [_normalize_text(marker) for marker in markers]
+
+    def has_marker(text: Optional[str]) -> bool:
+        if not text:
+            return False
+        normalized = _normalize_text(text)
+        return any(marker in normalized for marker in normalized_markers)
+
+    return soup.find(string=has_marker) is not None
 
 
 def parse_rights_data(html_content: str) -> Optional[dict]:
@@ -60,30 +80,57 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
     def get_value_from_label(element):
         if not element:
             return None
-        text = element.get_text(" ", strip=True)
+        text = _clean_text(element.get_text(" ", strip=True))
         if ':' in text:
-            return text.split(':', 1)[1].strip()
+            value = text.split(':', 1)[1].strip()
+            return value or None
         return text or None
 
     # Helper to find a label and extract its associated value from the next text node
     def find_value_after_label(label_text):
-        label_node = soup.find(string=lambda t: t and label_text in t)
+        if not label_text:
+            return None
+        normalized_label = _normalize_text(label_text)
+
+        label_node = soup.find(
+            string=lambda t: t and normalized_label in _normalize_text(t)
+        )
         if not label_node:
             return None
-        label_text_value = label_node.strip()
+        label_text_value = _clean_text(label_node)
         if ':' in label_text_value:
             after = label_text_value.split(':', 1)[1].strip()
             if after:
                 return after
         label_tag = label_node.parent if hasattr(label_node, 'parent') else None
         if label_tag:
+            for sibling in label_tag.next_siblings:
+                if isinstance(sibling, str):
+                    value = _clean_text(sibling)
+                else:
+                    value = _clean_text(sibling.get_text(" ", strip=True))
+                if value:
+                    return value
+        if label_tag:
             td = label_tag.find_parent('td') or label_tag
             if td:
-                next_td = td.find_next_sibling('td')
-                if next_td:
-                    return next_td.get_text(" ", strip=True)
-        if label_tag and label_tag.next_sibling and isinstance(label_tag.next_sibling, str):
-            return label_tag.next_sibling.strip()
+                found_label = False
+                for child in td.contents:
+                    if child is label_tag or child == label_node:
+                        found_label = True
+                        continue
+                    if not found_label:
+                        continue
+                    if isinstance(child, str):
+                        value = _clean_text(child)
+                    else:
+                        value = _clean_text(child.get_text(" ", strip=True))
+                    if value:
+                        return value
+                for next_td in td.find_next_siblings('td'):
+                    value = _clean_text(next_td.get_text(" ", strip=True))
+                    if value:
+                        return value
         return None
 
     # 1. Consultation Information
@@ -92,43 +139,65 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
         'identifiant_nir': find_value_after_label('Identifiant (NIR) :')
     }
 
+    def collect_section_rows(header_tag, stop_markers=None):
+        rows = []
+        if not header_tag:
+            return rows
+        current_tr = header_tag.find_parent('tr')
+        if not current_tr:
+            return rows
+        for tr in current_tr.find_next_siblings('tr'):
+            row_text = _normalize_text(tr.get_text(" ", strip=True))
+            if stop_markers and any(marker in row_text for marker in stop_markers):
+                break
+            rows.append(tr)
+        return rows
+
     # 2. Ouvrant Droit (Policy Holder)
-    ouvrant_droit = {}
+    ouvrant_droit = {"nom_famille": None, "nom_usage": None, "prenom": None}
     od_header = soup.find(
         lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
-        and "information de l'ouvrant droit" in tag.get_text().lower()
+        and "information de l'ouvrant droit" in _normalize_text(tag.get_text())
     )
-    if od_header:
-        current_tr = od_header.find_parent('tr')
-        nom_tr = current_tr.find_next_sibling('tr') if current_tr else None
-        usage_tr = nom_tr.find_next_sibling('tr') if nom_tr else None
-        prenom_tr = usage_tr.find_next_sibling('tr') if usage_tr else None
-        
-        ouvrant_droit['nom_famille'] = get_value_from_label(nom_tr.find('td')) if nom_tr else None
-        ouvrant_droit['nom_usage'] = get_value_from_label(usage_tr.find('td')) if usage_tr else None
-        ouvrant_droit['prenom'] = get_value_from_label(prenom_tr.find('td')) if prenom_tr else None
+    od_rows = collect_section_rows(
+        od_header,
+        stop_markers=[
+            "information du bénéficiaire",
+            "information du beneficiaire",
+            "information du bénéficiaire des soins",
+            "information du beneficiaire des soins",
+        ],
+    )
+    for row in od_rows:
+        row_text = _normalize_text(row.get_text(" ", strip=True))
+        cell = row.find('td') or row
+        if "nom de famille" in row_text:
+            ouvrant_droit['nom_famille'] = get_value_from_label(cell)
+        elif "nom d'usage" in row_text or "nom d usage" in row_text:
+            ouvrant_droit['nom_usage'] = get_value_from_label(cell)
+        elif "prénom" in row_text or "prenom" in row_text:
+            ouvrant_droit['prenom'] = get_value_from_label(cell)
     data['ouvrant_droit'] = ouvrant_droit
 
     # 3. Bénéficiaire (Beneficiary)
-    beneficiaire = {}
+    beneficiaire = {"nom_famille": None, "prenom": None, "date_naissance": None, "rang": None}
     ben_header = soup.find(
         lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
-        and "information du bénéficiaire des soins" in tag.get_text().lower()
+        and "information du bénéficiaire" in _normalize_text(tag.get_text())
     )
-    if ben_header:
-        current_tr = ben_header.find_parent('tr')
-        nom_tr = current_tr.find_next_sibling('tr') if current_tr else None
-        prenom_tr = nom_tr.find_next_sibling('tr') if nom_tr else None
-        dob_tr = prenom_tr.find_next_sibling('tr') if prenom_tr else None
-
-        beneficiaire['nom_famille'] = get_value_from_label(nom_tr.find('td')) if nom_tr else None
-        beneficiaire['prenom'] = get_value_from_label(prenom_tr.find('td')) if prenom_tr else None
-        
-        dob_text = get_value_from_label(dob_tr.find('td')) if dob_tr else None
-        # Handle non-breaking spaces before splitting
-        dob_parts = dob_text.replace('\xa0', ' ').split() if dob_text else []
-        beneficiaire['date_naissance'] = dob_parts[0] if dob_parts else None
-        beneficiaire['rang'] = dob_parts[1] if len(dob_parts) > 1 else None
+    ben_rows = collect_section_rows(ben_header)
+    for row in ben_rows:
+        row_text = _normalize_text(row.get_text(" ", strip=True))
+        cell = row.find('td') or row
+        if "nom de famille" in row_text:
+            beneficiaire['nom_famille'] = get_value_from_label(cell)
+        elif "prénom" in row_text or "prenom" in row_text:
+            beneficiaire['prenom'] = get_value_from_label(cell)
+        elif "date de naissance/rang" in row_text or "date de naissance" in row_text:
+            dob_text = get_value_from_label(cell)
+            dob_parts = _clean_text(dob_text).split() if dob_text else []
+            beneficiaire['date_naissance'] = dob_parts[0] if dob_parts else None
+            beneficiaire['rang'] = dob_parts[1] if len(dob_parts) > 1 else None
     data['beneficiaire'] = beneficiaire
 
     # 4. Organisme de Gestion (Managing Organization)
