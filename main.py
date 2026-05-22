@@ -184,21 +184,13 @@ def fetch_post_by_name(
         log(f"Error for {identifier}: {response}", "red")
         return None, 'error'
 
-    try:
-        data = parse_rights_data(response)
-    except Exception:
-        data = None
-
-    if data is not None:
-        log(f"Successfully fetched data for {identifier}", "green")
-        return [data], 'success'
-
-    # try to detect a candidate list and fetch alternative
-    try:
-        candidates = parse_all_candidate_rows(response)
-        log(f" Found {len(candidates)} candidates for {identifier}", "yellow")
-    except Exception:
-        candidates = []
+    candidates = []
+    if not nni_clean:
+        try:
+            candidates = parse_all_candidate_rows(response)
+            log(f" Found {len(candidates)} candidates for {identifier}", "yellow")
+        except Exception:
+            candidates = []
     
     if candidates:
         log(f" {len(candidates)} users found for {identifier} Extracting each...", "yellow")
@@ -277,9 +269,48 @@ def fetch_post_by_name(
         else:
             log(f"All {len(candidates)} candidates failed to parse", "red")
             return None, 'insurance_issue'
-    else:
-        log(f"No user found for {identifier}", "red")
-        return None, 'not_found'
+
+    try:
+        data = parse_rights_data(response)
+    except Exception:
+        data = None
+
+    if data is not None:
+        log(f"Successfully fetched data for {identifier}", "green")
+        return [data], 'success'
+
+    if nni_clean:
+        try:
+            candidates = parse_all_candidate_rows(response)
+            log(f" Found {len(candidates)} candidate matches for NIR {identifier}", "yellow")
+        except Exception:
+            candidates = []
+        if candidates:
+            candidate = candidates[0]
+            log(
+                f" Using first NIR candidate only: {candidate['Nom du bénéficiaire']} {candidate['Prénom']} (DOB: {candidate['Date de naissance']}, NIR: {candidate['NIR']})",
+                "yellow"
+            )
+            teg = alterative_fetch_post(
+                driver,
+                candidate['Nom du bénéficiaire'],
+                candidate['Nom usage'],
+                candidate['Prénom'],
+                candidate['Date de naissance'],
+                candidate['NIR'],
+                candidate.get('event_value')
+            )
+            try:
+                data = parse_rights_data(teg)
+            except Exception:
+                data = None
+            if data is not None:
+                log(f"Successfully fetched first NIR candidate for {identifier}", "green")
+                return [data], 'success'
+            return None, 'insurance_issue'
+
+    log(f"No user found for {identifier}", "red")
+    return None, 'not_found'
 
 
 def parse_all_candidate_rows(html):
@@ -304,6 +335,7 @@ def parse_all_candidate_rows(html):
         return any(c in ('lignePaire', 'ligneImpaire') for c in classes)
 
     rows = header_row.find_all_next(is_data_row)
+    seen_candidates = set()
     for row in rows:
         tds = row.find_all('td')
         if len(tds) < 5:
@@ -320,6 +352,18 @@ def parse_all_candidate_rows(html):
             link_id = link.get('id', '')
             if '###' in link_id:
                 event_value = link_id.split('###')[-1]
+
+        dedupe_key = (
+            tds[0].get_text(strip=True),
+            tds[1].get_text(strip=True),
+            tds[2].get_text(strip=True),
+            tds[3].get_text(strip=True),
+            tds[4].get_text(strip=True),
+            event_value,
+        )
+        if dedupe_key in seen_candidates:
+            continue
+        seen_candidates.add(dedupe_key)
 
         candidate = {
             'Nom du bénéficiaire': tds[0].get_text(strip=True),
