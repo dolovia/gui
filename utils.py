@@ -86,6 +86,25 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
             return value or None
         return text or None
 
+    def extract_row_value(row):
+        if not row:
+            return None
+        tds = row.find_all('td')
+        if not tds:
+            return get_value_from_label(row)
+        if len(tds) == 1:
+            return get_value_from_label(tds[0])
+        label_text = _clean_text(tds[0].get_text(" ", strip=True))
+        if ':' in label_text:
+            after = label_text.split(':', 1)[1].strip()
+            if after:
+                return after
+        for td in tds[1:]:
+            value = _clean_text(td.get_text(" ", strip=True))
+            if value:
+                return value
+        return get_value_from_label(tds[0])
+
     # Helper to find a label and extract its associated value from the next text node
     def find_value_after_label(label_text):
         if not label_text:
@@ -153,12 +172,16 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
             rows.append(tr)
         return rows
 
+    def find_section_header(label: str):
+        normalized_label = _normalize_text(label)
+        return soup.find(
+            lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
+            and _normalize_text(tag.get_text()) == normalized_label
+        )
+
     # 2. Ouvrant Droit (Policy Holder)
     ouvrant_droit = {"nom_famille": None, "nom_usage": None, "prenom": None}
-    od_header = soup.find(
-        lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
-        and "information de l'ouvrant droit" in _normalize_text(tag.get_text())
-    )
+    od_header = find_section_header("Information de l'ouvrant droit")
     od_rows = collect_section_rows(
         od_header,
         stop_markers=[
@@ -172,29 +195,28 @@ def parse_rights_data(html_content: str) -> Optional[dict]:
         row_text = _normalize_text(row.get_text(" ", strip=True))
         cell = row.find('td') or row
         if "nom de famille" in row_text:
-            ouvrant_droit['nom_famille'] = get_value_from_label(cell)
+            ouvrant_droit['nom_famille'] = extract_row_value(row)
         elif "nom d'usage" in row_text or "nom d usage" in row_text:
-            ouvrant_droit['nom_usage'] = get_value_from_label(cell)
+            ouvrant_droit['nom_usage'] = extract_row_value(row)
         elif "prénom" in row_text or "prenom" in row_text:
-            ouvrant_droit['prenom'] = get_value_from_label(cell)
+            ouvrant_droit['prenom'] = extract_row_value(row)
     data['ouvrant_droit'] = ouvrant_droit
 
     # 3. Bénéficiaire (Beneficiary)
     beneficiaire = {"nom_famille": None, "prenom": None, "date_naissance": None, "rang": None}
-    ben_header = soup.find(
-        lambda tag: tag.name in ('font', 'td', 'span', 'b', 'strong')
-        and "information du bénéficiaire" in _normalize_text(tag.get_text())
-    )
+    ben_header = find_section_header("Information du bénéficiaire des soins")
+    if not ben_header:
+        ben_header = find_section_header("Information du bénéficiaire")
     ben_rows = collect_section_rows(ben_header)
     for row in ben_rows:
         row_text = _normalize_text(row.get_text(" ", strip=True))
         cell = row.find('td') or row
         if "nom de famille" in row_text:
-            beneficiaire['nom_famille'] = get_value_from_label(cell)
+            beneficiaire['nom_famille'] = extract_row_value(row)
         elif "prénom" in row_text or "prenom" in row_text:
-            beneficiaire['prenom'] = get_value_from_label(cell)
+            beneficiaire['prenom'] = extract_row_value(row)
         elif "date de naissance/rang" in row_text or "date de naissance" in row_text:
-            dob_text = get_value_from_label(cell)
+            dob_text = extract_row_value(row)
             dob_parts = _clean_text(dob_text).split() if dob_text else []
             beneficiaire['date_naissance'] = dob_parts[0] if dob_parts else None
             beneficiaire['rang'] = dob_parts[1] if len(dob_parts) > 1 else None
