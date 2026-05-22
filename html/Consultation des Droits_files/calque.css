@@ -1,0 +1,11 @@
+.CalqueMenu
+	{position: absolute;
+	 top:+18px;
+	 left:+0px;
+	 visibility:hidden;
+	 display:none;
+	}
+.CalqueSsMenu
+	{position: absolute;
+	 visibility:hidden;
+	}

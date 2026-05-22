@@ -1,0 +1,40 @@
+.titreTableau {
+  background-color : #2A77B5;
+  color : #FFFFFF;
+}
+
+.titreTableau TD{
+  background-color : #2A77B5;
+  color : #FFFFFF;
+}
+
+.lignePaire {
+  background-color : #C4D4E3;
+  color : #000000;
+}
+
+.lignePaire TD{
+  background-color : #C4D4E3;
+  color : #000000;
+}
+
+.ligneImpaire {
+  background-color : #D9E5F0;
+  color : #000000;
+}
+
+.ligneImpaire TD{
+  background-color : #D9E5F0;
+  color : #000000;
+}
+
+.ligneFiltre {
+  background-color : #2A77B5;
+  color : #FFFFFF;
+}
+
+.ligneFiltre TD{
+  background-color : #2A77B5;
+  color : #FFFFFF;
+}
+

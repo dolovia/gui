@@ -1,0 +1,113 @@
+TABLE {
+	border: 1px;
+}
+
+/*
+TD {
+	font-family: Arial;
+	font-size: x-small;
+	
+	color: black;
+	
+	text-align: left;
+	vertical-align: top;
+	  	      
+}
+*/
+
+
+TD.droite {
+	text-align: right;
+}
+
+TD.centre {
+	text-align: center;
+}
+
+TD.gauche {
+	text-align: left;
+}
+
+
+
+
+TABLE.globaltableClass {	
+	border-collapse: collapse; 
+	border: 1px;
+	padding:0;	
+}
+
+TABLE.headerTable {	
+	border-collapse: collapse; 
+	border: 0;
+	padding:0;	
+}
+
+TABLE.footer {
+	text-align: center;
+}
+
+
+
+TD.globaltableClass {
+	border: 0; 
+	padding: 0;
+}
+
+TR.globaltableClass {
+	border: 0; 
+	padding: 0;
+}
+
+
+
+TR.headerLine {
+	 height : 0px;
+	 line-height : 0px;
+	 font-size: 0px;
+}
+TR.dataLine {
+	 height : 0px;
+	 font-size: 0px;
+	 line-height : 0px;
+}
+
+TR.footer {
+	text-align: center;
+}
+
+
+TD.headerLine {
+	 height : 1px;
+	 font-size: 1px;
+	 border-top-width:0;
+	 border-bottom-width:0;
+}
+TD.dataLine {
+	 height : 1px;
+	 font-size: 1px;
+	 border-top-width:0;
+	 border-bottom-width:0;
+}
+
+TD.footer {
+	text-align: center;
+}
+
+.alDroite {
+	right : 0px;
+}
+
+.maitre {
+	 position:relative;
+	 overflow:hidden;
+	 z-index:+1;
+	 height:100%;
+}
+
+.maitreEtendu {
+	 position:relative;
+	 overflow:visible;
+	 z-index:+5;
+	 height:100%;
+}
