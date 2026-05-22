@@ -2,6 +2,7 @@ import queue
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog
+from time import time
 from typing import Optional, Callable
 
 from main import RunConfig, run_job
@@ -11,13 +12,18 @@ class ManagerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("TEG Manager")
-        self.minsize(900, 650)
+        self.minsize(980, 760)
 
         self._queue: queue.Queue = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
         self._stop_event: Optional[threading.Event] = None
+        self._run_started_at: Optional[float] = None
+        self._final_elapsed_seconds: Optional[int] = None
+        self._last_progress: dict = {}
+        self._log_records: list[dict] = []
 
         self._build_ui()
+        self._set_status_badge("Idle")
         self._poll_queue()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -39,8 +45,13 @@ class ManagerApp(tk.Tk):
         self.not_found_var = tk.StringVar(value="0")
         self.insurance_var = tk.StringVar(value="0")
         self.request_error_var = tk.StringVar(value="0")
+        self.failed_candidates_var = tk.StringVar(value="0")
         self.current_var = tk.StringVar(value="")
+        self.elapsed_var = tk.StringVar(value="00:00:00")
+        self.average_var = tk.StringVar(value="-")
+        self.eta_var = tk.StringVar(value="-")
         self.summary_var = tk.StringVar(value="No run yet.")
+        self.log_filter_var = tk.StringVar(value="All")
 
         config_frame = ttk.LabelFrame(self, text="Configuration")
         config_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
@@ -79,46 +90,86 @@ class ManagerApp(tk.Tk):
         progress_frame.columnconfigure(1, weight=1)
 
         ttk.Label(progress_frame, text="Status").grid(row=0, column=0, sticky="w")
-        ttk.Label(progress_frame, textvariable=self.status_var).grid(row=0, column=1, sticky="w")
+        self.status_badge = tk.Label(
+            progress_frame,
+            textvariable=self.status_var,
+            width=12,
+            relief="ridge",
+            padx=8,
+            pady=2
+        )
+        self.status_badge.grid(row=0, column=1, sticky="w")
 
         ttk.Label(progress_frame, text="Processed").grid(row=1, column=0, sticky="w")
         ttk.Label(progress_frame, textvariable=self.processed_var).grid(row=1, column=1, sticky="w")
 
-        ttk.Label(progress_frame, text="Successful records").grid(row=2, column=0, sticky="w")
-        ttk.Label(progress_frame, textvariable=self.success_var).grid(row=2, column=1, sticky="w")
+        ttk.Label(progress_frame, text="Elapsed").grid(row=2, column=0, sticky="w")
+        ttk.Label(progress_frame, textvariable=self.elapsed_var).grid(row=2, column=1, sticky="w")
 
-        ttk.Label(progress_frame, text="Not found").grid(row=3, column=0, sticky="w")
-        ttk.Label(progress_frame, textvariable=self.not_found_var).grid(row=3, column=1, sticky="w")
+        ttk.Label(progress_frame, text="Avg / request").grid(row=3, column=0, sticky="w")
+        ttk.Label(progress_frame, textvariable=self.average_var).grid(row=3, column=1, sticky="w")
 
-        ttk.Label(progress_frame, text="Insurance issues").grid(row=4, column=0, sticky="w")
-        ttk.Label(progress_frame, textvariable=self.insurance_var).grid(row=4, column=1, sticky="w")
+        ttk.Label(progress_frame, text="ETA").grid(row=4, column=0, sticky="w")
+        ttk.Label(progress_frame, textvariable=self.eta_var).grid(row=4, column=1, sticky="w")
 
-        ttk.Label(progress_frame, text="Request errors").grid(row=5, column=0, sticky="w")
-        ttk.Label(progress_frame, textvariable=self.request_error_var).grid(row=5, column=1, sticky="w")
+        ttk.Label(progress_frame, text="Current").grid(row=5, column=0, sticky="w")
+        ttk.Label(progress_frame, textvariable=self.current_var).grid(row=5, column=1, sticky="w")
 
-        ttk.Label(progress_frame, text="Current").grid(row=6, column=0, sticky="w")
-        ttk.Label(progress_frame, textvariable=self.current_var).grid(row=6, column=1, sticky="w")
-
-        ttk.Label(progress_frame, text="Run summary").grid(row=7, column=0, sticky="nw")
+        ttk.Label(progress_frame, text="Run summary").grid(row=6, column=0, sticky="nw")
         summary_message = tk.Message(progress_frame, textvariable=self.summary_var, width=650)
-        summary_message.grid(row=7, column=1, sticky="w")
+        summary_message.grid(row=6, column=1, sticky="w")
 
         self.progress_bar = ttk.Progressbar(progress_frame, orient="horizontal", mode="determinate")
-        self.progress_bar.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.progress_bar.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+
+        summary_frame = ttk.LabelFrame(self, text="Summary")
+        summary_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+        summary_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(summary_frame, text="Success").grid(row=0, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.success_var).grid(row=0, column=1, sticky="w")
+
+        ttk.Label(summary_frame, text="Not found").grid(row=1, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.not_found_var).grid(row=1, column=1, sticky="w")
+
+        ttk.Label(summary_frame, text="Insurance issues").grid(row=2, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.insurance_var).grid(row=2, column=1, sticky="w")
+
+        ttk.Label(summary_frame, text="Request errors").grid(row=3, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.request_error_var).grid(row=3, column=1, sticky="w")
+
+        ttk.Label(summary_frame, text="Failed candidates").grid(row=4, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.failed_candidates_var).grid(row=4, column=1, sticky="w")
 
         log_frame = ttk.LabelFrame(self, text="Log")
-        log_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+        log_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
         log_frame.columnconfigure(0, weight=1)
-        log_frame.rowconfigure(0, weight=1)
+        log_frame.rowconfigure(1, weight=1)
+
+        filter_frame = ttk.Frame(log_frame)
+        filter_frame.grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Label(filter_frame, text="Filter").grid(row=0, column=0, padx=(0, 8))
+        filter_box = ttk.Combobox(
+            filter_frame,
+            textvariable=self.log_filter_var,
+            values=("All", "Info", "Warnings", "Errors"),
+            state="readonly",
+            width=12
+        )
+        filter_box.grid(row=0, column=1, sticky="w")
+        filter_box.bind("<<ComboboxSelected>>", lambda _event: self._refresh_log_view())
 
         self.log_text = tk.Text(log_frame, height=18, state="disabled", wrap="word")
         scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
-        self.log_text.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.log_text.tag_configure("info", foreground="#1f2937")
+        self.log_text.tag_configure("warning", foreground="#9a6700")
+        self.log_text.tag_configure("error", foreground="#b42318")
+        self.log_text.grid(row=1, column=0, sticky="nsew")
+        scrollbar.grid(row=1, column=1, sticky="ns")
 
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)
 
     def _add_entry(
         self,
@@ -196,6 +247,12 @@ class ManagerApp(tk.Tk):
             return
 
         self._stop_event = threading.Event()
+        self._run_started_at = time()
+        self._final_elapsed_seconds = None
+        self._last_progress = {"processed": 0, "total": 0}
+        self._log_records.clear()
+        self._clear_log_view()
+        self._reset_run_metrics()
         self._set_running(True)
         self._append_log("Starting processing...")
         self.summary_var.set("Running...")
@@ -210,6 +267,7 @@ class ManagerApp(tk.Tk):
     def _stop_run(self) -> None:
         if self._stop_event:
             self._stop_event.set()
+            self._set_status_badge("Stopping")
             self._append_log("Stop requested.")
 
     def _run_worker(self, config: RunConfig) -> None:
@@ -254,9 +312,11 @@ class ManagerApp(tk.Tk):
                     self._handle_state(payload)
         except queue.Empty:
             pass
+        self._refresh_runtime_metrics()
         self.after(200, self._poll_queue)
 
     def _update_progress(self, payload: dict) -> None:
+        self._last_progress = payload
         processed = int(payload.get("processed", 0))
         total = int(payload.get("total", 0))
         self.processed_var.set(f"{processed}/{total}")
@@ -264,6 +324,7 @@ class ManagerApp(tk.Tk):
         self.not_found_var.set(str(payload.get("not_found", 0)))
         self.insurance_var.set(str(payload.get("insurance_issue", 0)))
         self.request_error_var.set(str(payload.get("request_error", 0)))
+        self.failed_candidates_var.set(str(payload.get("failed_candidates", 0)))
         self.current_var.set(payload.get("current") or "")
 
         if total > 0:
@@ -273,18 +334,18 @@ class ManagerApp(tk.Tk):
 
     def _handle_state(self, state: str) -> None:
         if state == "done":
-            self.status_var.set("Finished")
+            self._set_status_badge("Done")
             self._set_running(False)
         elif state == "error":
-            self.status_var.set("Error")
+            self._set_status_badge("Error")
             self._set_running(False)
         elif state == "stopped":
-            self.status_var.set("Stopped")
+            self._set_status_badge("Done")
             self._set_running(False)
 
     def _set_running(self, running: bool) -> None:
         if running:
-            self.status_var.set("Running")
+            self._set_status_badge("Running")
             self.start_button.configure(state="disabled")
             self.stop_button.configure(state="normal")
         else:
@@ -292,8 +353,12 @@ class ManagerApp(tk.Tk):
             self.stop_button.configure(state="disabled")
 
     def _append_log(self, message: str) -> None:
+        level = self._classify_log_level(message)
+        self._log_records.append({"message": message, "level": level})
+        if self.log_filter_var.get() != "All" and not self._matches_log_filter(level):
+            return
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", message + "\n")
+        self.log_text.insert("end", message + "\n", level)
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
@@ -307,7 +372,7 @@ class ManagerApp(tk.Tk):
         elif status == "stopped":
             status_label = "Stopped"
         else:
-            status_label = "Finished"
+            status_label = "Done"
 
         processed = summary.get("processed", 0)
         total = summary.get("total", 0)
@@ -315,9 +380,15 @@ class ManagerApp(tk.Tk):
         not_found = summary.get("not_found", 0)
         insurance = summary.get("insurance_issue", 0)
         request_error = summary.get("request_error", 0)
+        failed_candidates = summary.get("failed_candidates", 0)
         elapsed = summary.get("elapsed_hms", "")
+        elapsed_seconds = summary.get("elapsed_seconds")
         results_file = summary.get("results_file", "")
         message = summary.get("message", "")
+        self.failed_candidates_var.set(str(failed_candidates))
+        if isinstance(elapsed_seconds, int):
+            self._final_elapsed_seconds = elapsed_seconds
+            self.elapsed_var.set(self._format_seconds(elapsed_seconds))
 
         parts = [
             f"Status: {status_label}",
@@ -325,7 +396,8 @@ class ManagerApp(tk.Tk):
             f"Success: {success}",
             f"Not found: {not_found}",
             f"Insurance issues: {insurance}",
-            f"Request errors: {request_error}"
+            f"Request errors: {request_error}",
+            f"Failed candidates: {failed_candidates}"
         ]
         if elapsed:
             parts.append(f"Time: {elapsed}")
@@ -334,6 +406,93 @@ class ManagerApp(tk.Tk):
         if message:
             parts.append(f"Note: {message}")
         self.summary_var.set(" | ".join(parts))
+
+    def _classify_log_level(self, message: str) -> str:
+        lowered = message.lower()
+        if any(token in lowered for token in ("error", "failed", "timed out", "traceback")):
+            return "error"
+        if any(token in lowered for token in ("not found", "warning", "insurance", "stop requested", "sleeping", "no existing results")):
+            return "warning"
+        return "info"
+
+    def _matches_log_filter(self, level: str) -> bool:
+        selected = self.log_filter_var.get()
+        if selected == "All":
+            return True
+        if selected == "Info":
+            return level == "info"
+        if selected == "Warnings":
+            return level == "warning"
+        if selected == "Errors":
+            return level == "error"
+        return True
+
+    def _refresh_log_view(self) -> None:
+        self._clear_log_view()
+        self.log_text.configure(state="normal")
+        for record in self._log_records:
+            if self._matches_log_filter(record["level"]):
+                self.log_text.insert("end", record["message"] + "\n", record["level"])
+        self.log_text.see("end")
+        self.log_text.configure(state="disabled")
+
+    def _clear_log_view(self) -> None:
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
+
+    def _reset_run_metrics(self) -> None:
+        self.status_var.set("Idle")
+        self.processed_var.set("0/0")
+        self.success_var.set("0")
+        self.not_found_var.set("0")
+        self.insurance_var.set("0")
+        self.request_error_var.set("0")
+        self.failed_candidates_var.set("0")
+        self.current_var.set("")
+        self.elapsed_var.set("00:00:00")
+        self.average_var.set("-")
+        self.eta_var.set("-")
+
+    def _refresh_runtime_metrics(self) -> None:
+        if self._run_started_at is None:
+            return
+        if self._final_elapsed_seconds is not None:
+            elapsed_seconds = self._final_elapsed_seconds
+        else:
+            elapsed_seconds = max(0, int(time() - self._run_started_at))
+        self.elapsed_var.set(self._format_seconds(elapsed_seconds))
+
+        processed = int(self._last_progress.get("processed", 0))
+        total = int(self._last_progress.get("total", 0))
+        if processed > 0 and elapsed_seconds > 0:
+            average = elapsed_seconds / processed
+            self.average_var.set(f"{average:.1f}s")
+            remaining = max(0, total - processed)
+            self.eta_var.set(self._format_seconds(int(remaining * average)))
+        else:
+            self.average_var.set("-")
+            self.eta_var.set("-")
+
+    def _set_status_badge(self, status: str) -> None:
+        colors = {
+            "Idle": ("#e5e7eb", "#111827"),
+            "Running": ("#dcfce7", "#166534"),
+            "Paused": ("#fef3c7", "#92400e"),
+            "Stopping": ("#fde68a", "#92400e"),
+            "Error": ("#fee2e2", "#991b1b"),
+            "Done": ("#dbeafe", "#1d4ed8"),
+        }
+        background, foreground = colors.get(status, ("#e5e7eb", "#111827"))
+        self.status_var.set(status)
+        self.status_badge.configure(bg=background, fg=foreground)
+
+    @staticmethod
+    def _format_seconds(value: int) -> str:
+        hours = value // 3600
+        minutes = (value % 3600) // 60
+        seconds = value % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     def _on_close(self) -> None:
         if self._stop_event and not self._stop_event.is_set():

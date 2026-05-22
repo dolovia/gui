@@ -493,6 +493,19 @@ def run_job(
     insurance_issue_list = []
     request_error_list = []
     stop_requested = False
+    failed_candidates_file = os.path.join("failed", "failed_candidates.txt")
+
+    def count_nonempty_lines(file_name: str) -> int:
+        try:
+            with open(file_name, 'r', encoding='utf-8') as fh:
+                return sum(1 for line in fh if line.strip())
+        except FileNotFoundError:
+            return 0
+
+    initial_failed_candidates = count_nonempty_lines(failed_candidates_file)
+
+    def current_failed_candidates_count() -> int:
+        return max(0, count_nonempty_lines(failed_candidates_file) - initial_failed_candidates)
 
     def build_summary(status: str, message: Optional[str] = None) -> dict:
         end_time = time()
@@ -509,6 +522,7 @@ def run_job(
             "not_found": len(not_found_list),
             "insurance_issue": len(insurance_issue_list),
             "request_error": len(request_error_list),
+            "failed_candidates": current_failed_candidates_count(),
             "elapsed_seconds": int(elapsed_time),
             "elapsed_hms": f"{hours}h {minutes}m {seconds}s",
             "results_file": save_file_name,
@@ -597,6 +611,7 @@ def run_job(
                 "not_found": len(not_found_list),
                 "insurance_issue": len(insurance_issue_list),
                 "request_error": len(request_error_list),
+                "failed_candidates": current_failed_candidates_count(),
                 "current": current
             })
 
