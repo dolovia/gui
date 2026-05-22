@@ -28,6 +28,7 @@ class ManagerApp(tk.Tk):
         self.worker_name_var = tk.StringVar(value=defaults.worker_name)
         self.batch_size_var = tk.StringVar(value=str(defaults.batch_size))
         self.sleep_request_var = tk.StringVar(value=str(defaults.sleep_per_request))
+        self.sleep_candidate_var = tk.StringVar(value=str(defaults.sleep_per_candidate))
         self.sleep_batch_var = tk.StringVar(value=str(defaults.sleep_per_batch))
         self.names_file_var = tk.StringVar(value=defaults.names_file)
         self.results_file_var = tk.StringVar(value=defaults.results_file)
@@ -49,24 +50,25 @@ class ManagerApp(tk.Tk):
         self._add_entry(config_frame, 1, "Worker name", self.worker_name_var)
         self._add_entry(config_frame, 2, "Batch size", self.batch_size_var)
         self._add_entry(config_frame, 3, "Sleep per request (s)", self.sleep_request_var)
-        self._add_entry(config_frame, 4, "Sleep per batch (s)", self.sleep_batch_var)
+        self._add_entry(config_frame, 4, "Sleep per candidate (s)", self.sleep_candidate_var)
+        self._add_entry(config_frame, 5, "Sleep per batch (s)", self.sleep_batch_var)
         self._add_entry(
             config_frame,
-            5,
+            6,
             "Names file",
             self.names_file_var,
             browse_cmd=self._browse_names
         )
         self._add_entry(
             config_frame,
-            6,
+            7,
             "Results file",
             self.results_file_var,
             browse_cmd=self._browse_results
         )
 
         button_frame = ttk.Frame(config_frame)
-        button_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        button_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.start_button = ttk.Button(button_frame, text="Start", command=self._start_run)
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self._stop_run, state="disabled")
         self.start_button.grid(row=0, column=0, padx=(0, 8))
@@ -150,6 +152,7 @@ class ManagerApp(tk.Tk):
         working_port = self._parse_int(self.working_port_var.get(), "Working port")
         batch_size = self._parse_int(self.batch_size_var.get(), "Batch size")
         sleep_per_request = self._parse_int(self.sleep_request_var.get(), "Sleep per request")
+        sleep_per_candidate = self._parse_int(self.sleep_candidate_var.get(), "Sleep per candidate")
         sleep_per_batch = self._parse_int(self.sleep_batch_var.get(), "Sleep per batch")
 
         worker_name = self.worker_name_var.get().strip()
@@ -169,6 +172,7 @@ class ManagerApp(tk.Tk):
             worker_name=worker_name,
             batch_size=batch_size,
             sleep_per_request=sleep_per_request,
+            sleep_per_candidate=sleep_per_candidate,
             sleep_per_batch=sleep_per_batch,
             names_file=names_file,
             results_file=results_file,

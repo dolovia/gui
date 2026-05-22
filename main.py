@@ -16,7 +16,14 @@ from datetime import datetime
 from utils import parse_rights_data, alterative_fetch_post, set_logger
 import pandas as pd
 from termcolor import colored
-from config import WORKING_PORT, WORKER_NAME, BATCH_SIZE, SLEEP_PER_REQUEST, SLEEP_PER_BATCH
+from config import (
+    WORKING_PORT,
+    WORKER_NAME,
+    BATCH_SIZE,
+    SLEEP_PER_REQUEST,
+    SLEEP_PER_CANDIDATE,
+    SLEEP_PER_BATCH,
+)
 import subprocess
 import os
 import signal
@@ -30,6 +37,7 @@ class RunConfig:
     worker_name: str = WORKER_NAME
     batch_size: int = BATCH_SIZE
     sleep_per_request: int = SLEEP_PER_REQUEST
+    sleep_per_candidate: int = SLEEP_PER_CANDIDATE
     sleep_per_batch: int = SLEEP_PER_BATCH
     names_file: str = "names.txt"
     results_file: str = "results.xlsx"
@@ -93,7 +101,8 @@ def fetch_post_by_name(
     datesoins=None,
     nni=None,
     naissance='',
-    log: Optional[Callable[[str, Optional[str]], None]] = None
+    log: Optional[Callable[[str, Optional[str]], None]] = None,
+    sleep_per_candidate: int = 0
 ):
     """Send a POST by nom/prenom (last name / first name) and return parsed data/status.
 
@@ -234,6 +243,10 @@ def fetch_post_by_name(
                 with open('failed/failed_candidates.txt', 'a') as f:
                     f.write(f"{failed_nir}\n")
                 continue
+
+            if sleep_per_candidate > 0 and idx < len(candidates):
+                log(f"  Sleeping {sleep_per_candidate}s before next candidate...", "yellow")
+                sleep(sleep_per_candidate)
         
         # Return all successful candidates or insurance_issue if none succeeded
         if successful_candidates:
@@ -607,7 +620,8 @@ def run_job(
                 prenom=prenom,
                 datesoins=default_datesoins,
                 nni=nni,
-                log=log
+                log=log,
+                sleep_per_candidate=config.sleep_per_candidate
             )
             if status == 'success' and result_list:
                 # result_list is now a list of dicts (all successful candidates)
