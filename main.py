@@ -13,6 +13,7 @@ from threading import Thread, Event
 from typing import Optional, Callable
 from time import sleep, time
 from datetime import datetime
+from random import randint
 from utils import parse_rights_data, alterative_fetch_post, set_logger
 import pandas as pd
 from termcolor import colored
@@ -20,9 +21,12 @@ from config import (
     WORKING_PORT,
     WORKER_NAME,
     BATCH_SIZE,
-    SLEEP_PER_REQUEST,
-    SLEEP_PER_CANDIDATE,
-    SLEEP_PER_BATCH,
+    SLEEP_PER_REQUEST_MIN,
+    SLEEP_PER_REQUEST_MAX,
+    SLEEP_PER_CANDIDATE_MIN,
+    SLEEP_PER_CANDIDATE_MAX,
+    SLEEP_PER_BATCH_MIN,
+    SLEEP_PER_BATCH_MAX,
 )
 import subprocess
 import os
@@ -36,12 +40,23 @@ class RunConfig:
     working_port: int = WORKING_PORT
     worker_name: str = WORKER_NAME
     batch_size: int = BATCH_SIZE
-    sleep_per_request: int = SLEEP_PER_REQUEST
-    sleep_per_candidate: int = SLEEP_PER_CANDIDATE
-    sleep_per_batch: int = SLEEP_PER_BATCH
+    sleep_per_request_min: int = SLEEP_PER_REQUEST_MIN
+    sleep_per_request_max: int = SLEEP_PER_REQUEST_MAX
+    sleep_per_candidate_min: int = SLEEP_PER_CANDIDATE_MIN
+    sleep_per_candidate_max: int = SLEEP_PER_CANDIDATE_MAX
+    sleep_per_batch_min: int = SLEEP_PER_BATCH_MIN
+    sleep_per_batch_max: int = SLEEP_PER_BATCH_MAX
     names_file: str = "names.txt"
     results_file: str = "results.xlsx"
     pause_on_finish: int = 30
+
+
+def random_sleep_seconds(min_seconds: int, max_seconds: int) -> int:
+    safe_min = max(0, int(min_seconds))
+    safe_max = max(safe_min, int(max_seconds))
+    if safe_max == 0:
+        return 0
+    return randint(safe_min, safe_max)
 
 
 def make_logger(
@@ -102,7 +117,8 @@ def fetch_post_by_name(
     nni=None,
     naissance='',
     log: Optional[Callable[[str, Optional[str]], None]] = None,
-    sleep_per_candidate: int = 0,
+    sleep_per_candidate_min: int = 0,
+    sleep_per_candidate_max: int = 0,
     stop_event: Optional[Event] = None,
     pause_event: Optional[Event] = None
 ):
@@ -257,9 +273,10 @@ def fetch_post_by_name(
                     f.write(f"{failed_nir}\n")
                 continue
 
-            if sleep_per_candidate > 0 and idx < len(candidates):
-                log(f"  Sleeping {sleep_per_candidate}s before next candidate...", "yellow")
-                if interruptible_sleep(sleep_per_candidate):
+            candidate_sleep = random_sleep_seconds(sleep_per_candidate_min, sleep_per_candidate_max)
+            if candidate_sleep > 0 and idx < len(candidates):
+                log(f"  Sleeping {candidate_sleep}s before next candidate...", "yellow")
+                if interruptible_sleep(candidate_sleep):
                     return None, 'error'
         
         # Return all successful candidates or insurance_issue if none succeeded
@@ -742,7 +759,8 @@ def run_job(
                 datesoins=default_datesoins,
                 nni=nni,
                 log=log,
-                sleep_per_candidate=config.sleep_per_candidate,
+                sleep_per_candidate_min=config.sleep_per_candidate_min,
+                sleep_per_candidate_max=config.sleep_per_candidate_max,
                 stop_event=stop_event,
                 pause_event=pause_event
             )
@@ -778,8 +796,10 @@ def run_job(
                 df.to_excel(save_file_name, index=False, engine='openpyxl')
                 log(f"Batch saved: {len(results)} total records", "green")
                 batch_counter = 0
-                if config.sleep_per_batch > 0:
-                    if interruptible_sleep(config.sleep_per_batch):
+                batch_sleep = random_sleep_seconds(config.sleep_per_batch_min, config.sleep_per_batch_max)
+                if batch_sleep > 0:
+                    log(f"Sleeping {batch_sleep}s after batch save...", "yellow")
+                    if interruptible_sleep(batch_sleep):
                         stop_requested = True
                         log("Stop requested. Finishing up current work...", "yellow")
                         break
@@ -789,8 +809,10 @@ def run_job(
             if cleanup_queue is not None:
                 cleanup_queue.put(search_key)
         emit_progress(search_key)
-        if config.sleep_per_request > 0:
-            if interruptible_sleep(config.sleep_per_request):
+        request_sleep = random_sleep_seconds(config.sleep_per_request_min, config.sleep_per_request_max)
+        if request_sleep > 0:
+            log(f"Sleeping {request_sleep}s before next search...", "yellow")
+            if interruptible_sleep(request_sleep):
                 stop_requested = True
                 log("Stop requested. Finishing up current work...", "yellow")
                 break

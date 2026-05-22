@@ -8,6 +8,55 @@ from typing import Optional, Callable
 from main import RunConfig, run_job
 
 
+class ToolTip:
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self.widget = widget
+        self.text = text
+        self._window: Optional[tk.Toplevel] = None
+        self._after_id: Optional[str] = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _event=None) -> None:
+        self._cancel()
+        self._after_id = self.widget.after(400, self._show)
+
+    def _cancel(self) -> None:
+        if self._after_id is not None:
+            self.widget.after_cancel(self._after_id)
+            self._after_id = None
+
+    def _show(self) -> None:
+        if self._window is not None or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 16
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 8
+        self._window = tk.Toplevel(self.widget)
+        self._window.wm_overrideredirect(True)
+        self._window.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(
+            self._window,
+            text=self.text,
+            justify="left",
+            bg="#fff7d6",
+            fg="#334155",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=6,
+            wraplength=280,
+            font=("Segoe UI", 9),
+        )
+        label.pack()
+
+    def _hide(self, _event=None) -> None:
+        self._cancel()
+        if self._window is not None:
+            self._window.destroy()
+            self._window = None
+
+
 class ManagerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -27,6 +76,7 @@ class ManagerApp(tk.Tk):
         self._log_records: list[dict] = []
         self._config_widgets: list[tk.Widget] = []
         self._browse_buttons: list[ttk.Button] = []
+        self._tooltips: list[ToolTip] = []
 
         self._configure_styles()
         self._build_ui()
@@ -71,9 +121,12 @@ class ManagerApp(tk.Tk):
         self.working_port_var = tk.StringVar(value=str(defaults.working_port))
         self.worker_name_var = tk.StringVar(value=defaults.worker_name)
         self.batch_size_var = tk.StringVar(value=str(defaults.batch_size))
-        self.sleep_request_var = tk.StringVar(value=str(defaults.sleep_per_request))
-        self.sleep_candidate_var = tk.StringVar(value=str(defaults.sleep_per_candidate))
-        self.sleep_batch_var = tk.StringVar(value=str(defaults.sleep_per_batch))
+        self.sleep_request_min_var = tk.StringVar(value=str(defaults.sleep_per_request_min))
+        self.sleep_request_max_var = tk.StringVar(value=str(defaults.sleep_per_request_max))
+        self.sleep_candidate_min_var = tk.StringVar(value=str(defaults.sleep_per_candidate_min))
+        self.sleep_candidate_max_var = tk.StringVar(value=str(defaults.sleep_per_candidate_max))
+        self.sleep_batch_min_var = tk.StringVar(value=str(defaults.sleep_per_batch_min))
+        self.sleep_batch_max_var = tk.StringVar(value=str(defaults.sleep_per_batch_max))
         self.names_file_var = tk.StringVar(value=defaults.names_file)
         self.results_file_var = tk.StringVar(value=defaults.results_file)
 
@@ -95,29 +148,34 @@ class ManagerApp(tk.Tk):
         config_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         config_frame.columnconfigure(1, weight=1)
 
-        self._add_entry(config_frame, 0, "Working port", self.working_port_var)
-        self._add_entry(config_frame, 1, "Worker name", self.worker_name_var)
-        self._add_entry(config_frame, 2, "Batch size", self.batch_size_var)
-        self._add_entry(config_frame, 3, "Sleep per request (s)", self.sleep_request_var)
-        self._add_entry(config_frame, 4, "Sleep per candidate (s)", self.sleep_candidate_var)
-        self._add_entry(config_frame, 5, "Sleep per batch (s)", self.sleep_batch_var)
+        self._add_entry(config_frame, 0, "Working port", self.working_port_var, help_text="Chrome remote debugging port used to attach the scraper to the already opened browser session.")
+        self._add_entry(config_frame, 1, "Worker name", self.worker_name_var, help_text="Name shown in logs and run tracking so you can identify which worker instance produced the results.")
+        self._add_entry(config_frame, 2, "Batch size", self.batch_size_var, help_text="Number of successful records to collect before saving to the Excel file.")
+        self._add_entry(config_frame, 3, "Request sleep min (s)", self.sleep_request_min_var, help_text="Minimum pause between one search and the next. Random delay helps avoid fixed timing patterns.")
+        self._add_entry(config_frame, 4, "Request sleep max (s)", self.sleep_request_max_var, help_text="Maximum pause between one search and the next. The app picks a random number between min and max.")
+        self._add_entry(config_frame, 5, "Candidate sleep min (s)", self.sleep_candidate_min_var, help_text="Minimum pause between candidate detail fetches when one name returns multiple beneficiaries.")
+        self._add_entry(config_frame, 6, "Candidate sleep max (s)", self.sleep_candidate_max_var, help_text="Maximum pause between candidate detail fetches for the same searched person.")
+        self._add_entry(config_frame, 7, "Batch sleep min (s)", self.sleep_batch_min_var, help_text="Minimum pause after a batch save to the Excel file.")
+        self._add_entry(config_frame, 8, "Batch sleep max (s)", self.sleep_batch_max_var, help_text="Maximum pause after a batch save. Useful for slowing down long continuous runs.")
         self._add_entry(
             config_frame,
-            6,
+            9,
             "Names file",
             self.names_file_var,
-            browse_cmd=self._browse_names
+            browse_cmd=self._browse_names,
+            help_text="Input text file containing names or NIR values to search. One item per line."
         )
         self._add_entry(
             config_frame,
-            7,
+            10,
             "Results file",
             self.results_file_var,
-            browse_cmd=self._browse_results
+            browse_cmd=self._browse_results,
+            help_text="Excel file where extracted results will be written and updated during the run."
         )
 
         button_frame = ttk.Frame(config_frame, style="App.TFrame")
-        button_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        button_frame.grid(row=11, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.start_button = ttk.Button(button_frame, text="Start", command=self._start_run, style="Accent.TButton")
         self.pause_button = ttk.Button(button_frame, text="Pause", command=self._toggle_pause, state="disabled", style="Warn.TButton")
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self._stop_run, state="disabled", style="Danger.TButton")
@@ -231,16 +289,21 @@ class ManagerApp(tk.Tk):
         row: int,
         label: str,
         variable: tk.StringVar,
-        browse_cmd: Optional[Callable[[], None]] = None
+        browse_cmd: Optional[Callable[[], None]] = None,
+        help_text: str = ""
     ) -> None:
-        ttk.Label(frame, text=label, style="Muted.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
+        label_widget = ttk.Label(frame, text=label, style="Muted.TLabel")
+        label_widget.grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
         entry = ttk.Entry(frame, textvariable=variable)
         entry.grid(row=row, column=1, sticky="ew", pady=4)
         self._config_widgets.append(entry)
+        self._attach_tooltip(label_widget, help_text)
+        self._attach_tooltip(entry, help_text)
         if browse_cmd:
             browse_button = ttk.Button(frame, text="Browse", command=browse_cmd)
             browse_button.grid(row=row, column=2, padx=(8, 0), pady=4)
             self._browse_buttons.append(browse_button)
+            self._attach_tooltip(browse_button, help_text)
 
     def _browse_names(self) -> None:
         path = filedialog.askopenfilename(title="Select names file", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
@@ -259,9 +322,12 @@ class ManagerApp(tk.Tk):
     def _build_config(self) -> RunConfig:
         working_port = self._parse_int(self.working_port_var.get(), "Working port")
         batch_size = self._parse_int(self.batch_size_var.get(), "Batch size")
-        sleep_per_request = self._parse_int(self.sleep_request_var.get(), "Sleep per request")
-        sleep_per_candidate = self._parse_int(self.sleep_candidate_var.get(), "Sleep per candidate")
-        sleep_per_batch = self._parse_int(self.sleep_batch_var.get(), "Sleep per batch")
+        sleep_per_request_min = self._parse_int(self.sleep_request_min_var.get(), "Request sleep min")
+        sleep_per_request_max = self._parse_int(self.sleep_request_max_var.get(), "Request sleep max")
+        sleep_per_candidate_min = self._parse_int(self.sleep_candidate_min_var.get(), "Candidate sleep min")
+        sleep_per_candidate_max = self._parse_int(self.sleep_candidate_max_var.get(), "Candidate sleep max")
+        sleep_per_batch_min = self._parse_int(self.sleep_batch_min_var.get(), "Batch sleep min")
+        sleep_per_batch_max = self._parse_int(self.sleep_batch_max_var.get(), "Batch sleep max")
 
         worker_name = self.worker_name_var.get().strip()
         if not worker_name:
@@ -275,13 +341,20 @@ class ManagerApp(tk.Tk):
         if not results_file:
             raise ValueError("Results file is required.")
 
+        self._validate_range(sleep_per_request_min, sleep_per_request_max, "Request sleep")
+        self._validate_range(sleep_per_candidate_min, sleep_per_candidate_max, "Candidate sleep")
+        self._validate_range(sleep_per_batch_min, sleep_per_batch_max, "Batch sleep")
+
         return RunConfig(
             working_port=working_port,
             worker_name=worker_name,
             batch_size=batch_size,
-            sleep_per_request=sleep_per_request,
-            sleep_per_candidate=sleep_per_candidate,
-            sleep_per_batch=sleep_per_batch,
+            sleep_per_request_min=sleep_per_request_min,
+            sleep_per_request_max=sleep_per_request_max,
+            sleep_per_candidate_min=sleep_per_candidate_min,
+            sleep_per_candidate_max=sleep_per_candidate_max,
+            sleep_per_batch_min=sleep_per_batch_min,
+            sleep_per_batch_max=sleep_per_batch_max,
             names_file=names_file,
             results_file=results_file,
             pause_on_finish=0
@@ -293,6 +366,13 @@ class ManagerApp(tk.Tk):
             return int(value)
         except ValueError as exc:
             raise ValueError(f"{label} must be an integer.") from exc
+
+    @staticmethod
+    def _validate_range(min_value: int, max_value: int, label: str) -> None:
+        if min_value < 0 or max_value < 0:
+            raise ValueError(f"{label} values must be zero or greater.")
+        if min_value > max_value:
+            raise ValueError(f"{label} min cannot be greater than max.")
 
     def _start_run(self) -> None:
         if self._worker_thread and self._worker_thread.is_alive():
@@ -580,6 +660,10 @@ class ManagerApp(tk.Tk):
             widget.configure(state=entry_state)
         for button in self._browse_buttons:
             button.configure(state=button_state)
+
+    def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
+        if text:
+            self._tooltips.append(ToolTip(widget, text))
 
     def _current_pause_offset(self) -> float:
         if self._paused_started_at is None:
