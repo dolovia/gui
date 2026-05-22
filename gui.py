@@ -151,15 +151,33 @@ class ManagerApp(tk.Tk):
         self._add_entry(config_frame, 0, "Working port", self.working_port_var, help_text="Chrome remote debugging port used to attach the scraper to the already opened browser session.")
         self._add_entry(config_frame, 1, "Worker name", self.worker_name_var, help_text="Name shown in logs and run tracking so you can identify which worker instance produced the results.")
         self._add_entry(config_frame, 2, "Batch size", self.batch_size_var, help_text="Number of successful records to collect before saving to the Excel file.")
-        self._add_entry(config_frame, 3, "Request sleep min (s)", self.sleep_request_min_var, help_text="Minimum pause between one search and the next. Random delay helps avoid fixed timing patterns.")
-        self._add_entry(config_frame, 4, "Request sleep max (s)", self.sleep_request_max_var, help_text="Maximum pause between one search and the next. The app picks a random number between min and max.")
-        self._add_entry(config_frame, 5, "Candidate sleep min (s)", self.sleep_candidate_min_var, help_text="Minimum pause between candidate detail fetches when one name returns multiple beneficiaries.")
-        self._add_entry(config_frame, 6, "Candidate sleep max (s)", self.sleep_candidate_max_var, help_text="Maximum pause between candidate detail fetches for the same searched person.")
-        self._add_entry(config_frame, 7, "Batch sleep min (s)", self.sleep_batch_min_var, help_text="Minimum pause after a batch save to the Excel file.")
-        self._add_entry(config_frame, 8, "Batch sleep max (s)", self.sleep_batch_max_var, help_text="Maximum pause after a batch save. Useful for slowing down long continuous runs.")
+        self._add_range_entry(
+            config_frame,
+            3,
+            "Request sleep (s)",
+            self.sleep_request_min_var,
+            self.sleep_request_max_var,
+            help_text="Random pause between one search and the next. The app picks a number between min and max."
+        )
+        self._add_range_entry(
+            config_frame,
+            4,
+            "Candidate sleep (s)",
+            self.sleep_candidate_min_var,
+            self.sleep_candidate_max_var,
+            help_text="Random pause between candidate detail fetches when one name returns multiple beneficiaries."
+        )
+        self._add_range_entry(
+            config_frame,
+            5,
+            "Batch sleep (s)",
+            self.sleep_batch_min_var,
+            self.sleep_batch_max_var,
+            help_text="Random pause after a batch save. Useful for slowing down long continuous runs."
+        )
         self._add_entry(
             config_frame,
-            9,
+            6,
             "Names file",
             self.names_file_var,
             browse_cmd=self._browse_names,
@@ -167,7 +185,7 @@ class ManagerApp(tk.Tk):
         )
         self._add_entry(
             config_frame,
-            10,
+            7,
             "Results file",
             self.results_file_var,
             browse_cmd=self._browse_results,
@@ -175,7 +193,7 @@ class ManagerApp(tk.Tk):
         )
 
         button_frame = ttk.Frame(config_frame, style="App.TFrame")
-        button_frame.grid(row=11, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        button_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
         self.start_button = ttk.Button(button_frame, text="Start", command=self._start_run, style="Accent.TButton")
         self.pause_button = ttk.Button(button_frame, text="Pause", command=self._toggle_pause, state="disabled", style="Warn.TButton")
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self._stop_run, state="disabled", style="Danger.TButton")
@@ -304,6 +322,40 @@ class ManagerApp(tk.Tk):
             browse_button.grid(row=row, column=2, padx=(8, 0), pady=4)
             self._browse_buttons.append(browse_button)
             self._attach_tooltip(browse_button, help_text)
+
+    def _add_range_entry(
+        self,
+        frame: ttk.LabelFrame,
+        row: int,
+        label: str,
+        min_variable: tk.StringVar,
+        max_variable: tk.StringVar,
+        help_text: str = ""
+    ) -> None:
+        label_widget = ttk.Label(frame, text=label, style="Muted.TLabel")
+        label_widget.grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
+
+        range_frame = ttk.Frame(frame, style="App.TFrame")
+        range_frame.grid(row=row, column=1, columnspan=2, sticky="ew", pady=4)
+        range_frame.columnconfigure(1, weight=1)
+        range_frame.columnconfigure(4, weight=1)
+
+        min_label = ttk.Label(range_frame, text="Min", style="Muted.TLabel")
+        min_label.grid(row=0, column=0, padx=(0, 6))
+        min_entry = ttk.Entry(range_frame, textvariable=min_variable, width=10)
+        min_entry.grid(row=0, column=1, sticky="ew")
+
+        to_label = ttk.Label(range_frame, text="to", style="Muted.TLabel")
+        to_label.grid(row=0, column=2, padx=10)
+
+        max_label = ttk.Label(range_frame, text="Max", style="Muted.TLabel")
+        max_label.grid(row=0, column=3, padx=(0, 6))
+        max_entry = ttk.Entry(range_frame, textvariable=max_variable, width=10)
+        max_entry.grid(row=0, column=4, sticky="ew")
+
+        self._config_widgets.extend([min_entry, max_entry])
+        for widget in (label_widget, range_frame, min_label, min_entry, to_label, max_label, max_entry):
+            self._attach_tooltip(widget, help_text)
 
     def _browse_names(self) -> None:
         path = filedialog.askopenfilename(title="Select names file", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
