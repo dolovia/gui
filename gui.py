@@ -13,6 +13,7 @@ class ManagerApp(tk.Tk):
         super().__init__()
         self.title("TEG Manager")
         self.minsize(980, 760)
+        self.configure(bg="#eef3f8")
 
         self._queue: queue.Queue = queue.Queue()
         self._worker_thread: Optional[threading.Thread] = None
@@ -24,11 +25,45 @@ class ManagerApp(tk.Tk):
         self._paused_accumulated_seconds: float = 0.0
         self._last_progress: dict = {}
         self._log_records: list[dict] = []
+        self._config_widgets: list[tk.Widget] = []
+        self._browse_buttons: list[ttk.Button] = []
 
+        self._configure_styles()
         self._build_ui()
         self._set_status_badge("Idle")
         self._poll_queue()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _configure_styles(self) -> None:
+        self.option_add("*Font", "{Segoe UI} 10")
+        self.option_add("*Label.Font", "{Segoe UI} 10")
+        self.option_add("*Message.Font", "{Segoe UI} 10")
+
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure("Card.TLabelframe", background="#ffffff", borderwidth=1, relief="solid")
+        style.configure("Card.TLabelframe.Label", background="#ffffff", foreground="#0f172a", font=("Segoe UI", 10, "bold"))
+        style.configure("App.TFrame", background="#ffffff")
+        style.configure("Toolbar.TFrame", background="#ffffff")
+        style.configure("TLabel", background="#ffffff", foreground="#334155")
+        style.configure("Stat.TLabel", background="#ffffff", foreground="#0f172a", font=("Segoe UI", 10, "bold"))
+        style.configure("Muted.TLabel", background="#ffffff", foreground="#64748b")
+        style.configure("TEntry", fieldbackground="#f8fafc", bordercolor="#cbd5e1", lightcolor="#cbd5e1", darkcolor="#cbd5e1")
+        style.map("TEntry", fieldbackground=[("disabled", "#e2e8f0")], foreground=[("disabled", "#64748b")])
+        style.configure("TButton", padding=(10, 6), font=("Segoe UI", 10, "bold"))
+        style.configure("Accent.TButton", background="#2563eb", foreground="#ffffff", borderwidth=0)
+        style.map("Accent.TButton", background=[("active", "#1d4ed8"), ("disabled", "#93c5fd")], foreground=[("disabled", "#eff6ff")])
+        style.configure("Warn.TButton", background="#f59e0b", foreground="#ffffff", borderwidth=0)
+        style.map("Warn.TButton", background=[("active", "#d97706"), ("disabled", "#fcd34d")], foreground=[("disabled", "#fff7ed")])
+        style.configure("Danger.TButton", background="#dc2626", foreground="#ffffff", borderwidth=0)
+        style.map("Danger.TButton", background=[("active", "#b91c1c"), ("disabled", "#fca5a5")], foreground=[("disabled", "#fff1f2")])
+        style.configure("TCombobox", fieldbackground="#f8fafc", background="#f8fafc")
+        style.map("TCombobox", fieldbackground=[("readonly", "#f8fafc"), ("disabled", "#e2e8f0")])
+        style.configure("TProgressbar", troughcolor="#dbeafe", background="#2563eb", bordercolor="#dbeafe", lightcolor="#2563eb", darkcolor="#2563eb")
 
     def _build_ui(self) -> None:
         defaults = RunConfig()
@@ -56,7 +91,7 @@ class ManagerApp(tk.Tk):
         self.summary_var = tk.StringVar(value="No run yet.")
         self.log_filter_var = tk.StringVar(value="All")
 
-        config_frame = ttk.LabelFrame(self, text="Configuration")
+        config_frame = ttk.LabelFrame(self, text="Configuration", style="Card.TLabelframe")
         config_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         config_frame.columnconfigure(1, weight=1)
 
@@ -81,16 +116,16 @@ class ManagerApp(tk.Tk):
             browse_cmd=self._browse_results
         )
 
-        button_frame = ttk.Frame(config_frame)
+        button_frame = ttk.Frame(config_frame, style="App.TFrame")
         button_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
-        self.start_button = ttk.Button(button_frame, text="Start", command=self._start_run)
-        self.pause_button = ttk.Button(button_frame, text="Pause", command=self._toggle_pause, state="disabled")
-        self.stop_button = ttk.Button(button_frame, text="Stop", command=self._stop_run, state="disabled")
+        self.start_button = ttk.Button(button_frame, text="Start", command=self._start_run, style="Accent.TButton")
+        self.pause_button = ttk.Button(button_frame, text="Pause", command=self._toggle_pause, state="disabled", style="Warn.TButton")
+        self.stop_button = ttk.Button(button_frame, text="Stop", command=self._stop_run, state="disabled", style="Danger.TButton")
         self.start_button.grid(row=0, column=0, padx=(0, 8))
         self.pause_button.grid(row=0, column=1, padx=(0, 8))
         self.stop_button.grid(row=0, column=2)
 
-        progress_frame = ttk.LabelFrame(self, text="Progress")
+        progress_frame = ttk.LabelFrame(self, text="Progress", style="Card.TLabelframe")
         progress_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         progress_frame.columnconfigure(1, weight=1)
 
@@ -127,33 +162,33 @@ class ManagerApp(tk.Tk):
         self.progress_bar = ttk.Progressbar(progress_frame, orient="horizontal", mode="determinate")
         self.progress_bar.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
-        summary_frame = ttk.LabelFrame(self, text="Summary")
+        summary_frame = ttk.LabelFrame(self, text="Summary", style="Card.TLabelframe")
         summary_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
         summary_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(summary_frame, text="Success").grid(row=0, column=0, sticky="w")
-        ttk.Label(summary_frame, textvariable=self.success_var).grid(row=0, column=1, sticky="w")
+        ttk.Label(summary_frame, text="Success", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.success_var, style="Stat.TLabel").grid(row=0, column=1, sticky="w")
 
-        ttk.Label(summary_frame, text="Not found").grid(row=1, column=0, sticky="w")
-        ttk.Label(summary_frame, textvariable=self.not_found_var).grid(row=1, column=1, sticky="w")
+        ttk.Label(summary_frame, text="Not found", style="Muted.TLabel").grid(row=1, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.not_found_var, style="Stat.TLabel").grid(row=1, column=1, sticky="w")
 
-        ttk.Label(summary_frame, text="Insurance issues").grid(row=2, column=0, sticky="w")
-        ttk.Label(summary_frame, textvariable=self.insurance_var).grid(row=2, column=1, sticky="w")
+        ttk.Label(summary_frame, text="Insurance issues", style="Muted.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.insurance_var, style="Stat.TLabel").grid(row=2, column=1, sticky="w")
 
-        ttk.Label(summary_frame, text="Request errors").grid(row=3, column=0, sticky="w")
-        ttk.Label(summary_frame, textvariable=self.request_error_var).grid(row=3, column=1, sticky="w")
+        ttk.Label(summary_frame, text="Request errors", style="Muted.TLabel").grid(row=3, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.request_error_var, style="Stat.TLabel").grid(row=3, column=1, sticky="w")
 
-        ttk.Label(summary_frame, text="Failed candidates").grid(row=4, column=0, sticky="w")
-        ttk.Label(summary_frame, textvariable=self.failed_candidates_var).grid(row=4, column=1, sticky="w")
+        ttk.Label(summary_frame, text="Failed candidates", style="Muted.TLabel").grid(row=4, column=0, sticky="w")
+        ttk.Label(summary_frame, textvariable=self.failed_candidates_var, style="Stat.TLabel").grid(row=4, column=1, sticky="w")
 
-        log_frame = ttk.LabelFrame(self, text="Log")
+        log_frame = ttk.LabelFrame(self, text="Log", style="Card.TLabelframe")
         log_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(1, weight=1)
 
-        filter_frame = ttk.Frame(log_frame)
+        filter_frame = ttk.Frame(log_frame, style="Toolbar.TFrame")
         filter_frame.grid(row=0, column=0, sticky="w", pady=(0, 8))
-        ttk.Label(filter_frame, text="Filter").grid(row=0, column=0, padx=(0, 8))
+        ttk.Label(filter_frame, text="Filter", style="Muted.TLabel").grid(row=0, column=0, padx=(0, 8))
         filter_box = ttk.Combobox(
             filter_frame,
             textvariable=self.log_filter_var,
@@ -164,7 +199,21 @@ class ManagerApp(tk.Tk):
         filter_box.grid(row=0, column=1, sticky="w")
         filter_box.bind("<<ComboboxSelected>>", lambda _event: self._refresh_log_view())
 
-        self.log_text = tk.Text(log_frame, height=18, state="disabled", wrap="word")
+        self.log_text = tk.Text(
+            log_frame,
+            height=18,
+            state="disabled",
+            wrap="word",
+            bg="#f8fafc",
+            fg="#1e293b",
+            insertbackground="#1e293b",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#cbd5e1",
+            highlightcolor="#93c5fd",
+            padx=10,
+            pady=10,
+        )
         scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.tag_configure("info", foreground="#1f2937")
@@ -184,11 +233,14 @@ class ManagerApp(tk.Tk):
         variable: tk.StringVar,
         browse_cmd: Optional[Callable[[], None]] = None
     ) -> None:
-        ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(frame, text=label, style="Muted.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
         entry = ttk.Entry(frame, textvariable=variable)
-        entry.grid(row=row, column=1, sticky="ew", pady=2)
+        entry.grid(row=row, column=1, sticky="ew", pady=4)
+        self._config_widgets.append(entry)
         if browse_cmd:
-            ttk.Button(frame, text="Browse", command=browse_cmd).grid(row=row, column=2, padx=(8, 0), pady=2)
+            browse_button = ttk.Button(frame, text="Browse", command=browse_cmd)
+            browse_button.grid(row=row, column=2, padx=(8, 0), pady=4)
+            self._browse_buttons.append(browse_button)
 
     def _browse_names(self) -> None:
         path = filedialog.askopenfilename(title="Select names file", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
@@ -378,11 +430,13 @@ class ManagerApp(tk.Tk):
             self.start_button.configure(state="disabled")
             self.pause_button.configure(state="normal", text="Pause")
             self.stop_button.configure(state="normal")
+            self._set_config_inputs_enabled(False)
         else:
             self._resume_elapsed_clock()
             self.start_button.configure(state="normal")
             self.pause_button.configure(state="disabled", text="Pause")
             self.stop_button.configure(state="disabled")
+            self._set_config_inputs_enabled(True)
 
     def _append_log(self, message: str) -> None:
         level = self._classify_log_level(message)
@@ -517,7 +571,15 @@ class ManagerApp(tk.Tk):
         }
         background, foreground = colors.get(status, ("#e5e7eb", "#111827"))
         self.status_var.set(status)
-        self.status_badge.configure(bg=background, fg=foreground)
+        self.status_badge.configure(bg=background, fg=foreground, activebackground=background, activeforeground=foreground, bd=0)
+
+    def _set_config_inputs_enabled(self, enabled: bool) -> None:
+        entry_state = "normal" if enabled else "disabled"
+        button_state = "normal" if enabled else "disabled"
+        for widget in self._config_widgets:
+            widget.configure(state=entry_state)
+        for button in self._browse_buttons:
+            button.configure(state=button_state)
 
     def _current_pause_offset(self) -> float:
         if self._paused_started_at is None:
